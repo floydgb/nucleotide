@@ -15,6 +15,6 @@ mod test {
         let prev_time = now.elapsed();
         new::run();
         let new_time = now.elapsed() - prev_time;
-        println!("prev: {:?}, new: {:?}", prev_time, new_time);
+        println!("\nprev: {:.2?}, new: {:.2?}\n", prev_time, new_time);
     }
 }
