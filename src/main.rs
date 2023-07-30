@@ -1,5 +1,6 @@
-use nucleotide::new::run;
+use nucleotide::{new, prev};
 
 fn main() {
-    run();
+    prev::run();
+    new::run();
 }

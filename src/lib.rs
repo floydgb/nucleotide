@@ -2,22 +2,32 @@ pub mod new;
 pub mod prev;
 
 #[cfg(test)]
-mod test {
-    use std::time;
+mod test_nucleotide {
 
-    use super::*;
+    use std::process::{Command, Stdio};
 
     #[test]
-    fn test() {
-        // Compare the times of the two runs
-        println!("\nRunning prev ----------------------------");
-        let now = time::Instant::now();
-        prev::run();
-        let prev_time = now.elapsed();
-        println!("\nRunning new ----------------------------");
-        let now = time::Instant::now();
-        new::run();
-        let new_time = now.elapsed();
-        println!("\nprev: {:.2?}, new: {:.2?}\n", prev_time, new_time);
+    fn test_prev_matches_new_stdout() {
+        let Ok(cmd) = Command::new("./target/release/nucleotide")
+            .stdout(Stdio::piped())
+            .spawn()
+        else {
+            assert!(false);
+            return;
+        };
+        let Ok(out) = cmd.wait_with_output() else {
+            assert!(false);
+            return;
+        };
+        match String::from_utf8(out.stdout) {
+            Ok(outstr) => {
+                let lines: Vec<&str> = outstr.split('\n').collect();
+                assert_eq!(
+                    lines[..lines.len() / 2],
+                    lines[lines.len() / 2..lines.len() - 1]
+                );
+            }
+            _ => assert!(false),
+        }
     }
 }
