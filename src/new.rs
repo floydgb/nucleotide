@@ -3,38 +3,69 @@
 //
 // by Greg Floyd
 
-use hashbrown::HashMap;
-use std::io::{BufRead, BufReader};
-use std::sync::Arc;
-use std::thread;
+// Imports --------------------------------------------------------------------
+use {
+    hashbrown::HashMap,
+    std::{
+        fs::File,
+        io::{BufRead, BufReader},
+        slice::Iter,
+        sync::Arc,
+        thread,
+    },
+};
 
-type Map = HashMap<Code, u32>;
+// Types ----------------------------------------------------------------------
+type SequenceCounts = HashMap<Code, u32>;
+
+struct CodeIter<'a> {
+    iter: Iter<'a, u8>,
+    code: Code,
+    mask: u64,
+}
 
 #[derive(Hash, PartialEq, PartialOrd, Ord, Eq, Clone, Copy)]
-struct Code(u64);
+struct Code {
+    code: u64,
+}
+
+// Constants ------------------------------------------------------------------
+const FILE_NAME: &str = "250000_in";
+const FILE_START: &str = ">THREE";
+const OCCS: [&str; 5] = [
+    "GGTATTTTAATTTATAGT",
+    "GGTATTTTAATT",
+    "GGTATT",
+    "GGTA",
+    "GGT",
+];
+
+// Methods --------------------------------------------------------------------
 impl Code {
     fn push(&mut self, c: u8, mask: u64) {
-        self.0 <<= 2;
-        self.0 |= c as u64;
-        self.0 &= mask;
+        self.code <<= 2;
+        self.code |= c as u64;
+        self.code &= mask;
     }
+
     fn from_str(s: &str) -> Code {
-        let mask = Code::make_mask(s.len());
-        let mut res = Code(0);
+        let mask = make_mask(s.len());
+        let mut res = Code { code: 0 };
         for c in s.as_bytes() {
-            res.push(Code::encode_byte(c), mask);
+            res.push(encode_byte(c), mask);
         }
         res
     }
-    fn to_string(&self, frame: usize) -> String {
+
+    fn to_string(self, frame: usize) -> String {
         let mut res = vec![];
-        let mut code = self.0;
+        let mut code = self.code;
         for _ in 0..frame {
             let c = match code as u8 & 0b11 {
-                c if c == Code::encode_byte(&b'A') => b'A',
-                c if c == Code::encode_byte(&b'T') => b'T',
-                c if c == Code::encode_byte(&b'G') => b'G',
-                c if c == Code::encode_byte(&b'C') => b'C',
+                c if c == encode_byte(&b'A') => b'A',
+                c if c == encode_byte(&b'T') => b'T',
+                c if c == encode_byte(&b'G') => b'G',
+                c if c == encode_byte(&b'C') => b'C',
                 _ => unreachable!(),
             };
             res.push(c);
@@ -43,37 +74,24 @@ impl Code {
         res.reverse();
         String::from_utf8(res).unwrap()
     }
-    fn make_mask(frame: usize) -> u64 {
-        (1u64 << (2 * frame)) - 1
-    }
-    #[inline(always)]
-    fn encode_byte(c: &u8) -> u8 {
-        (c >> 1) & 0b11
-    }
 }
 
-struct Iter<'a> {
-    iter: std::slice::Iter<'a, u8>,
-    code: Code,
-    mask: u64,
-}
-impl<'a> Iter<'a> {
-    fn new(input: &[u8], frame: usize) -> Iter {
+impl<'a> CodeIter<'a> {
+    fn new(input: &[u8], frame: usize) -> CodeIter {
         let mut iter = input.iter();
-        let mut code = Code(0);
-        let mask = Code::make_mask(frame);
+        let mut code = Code { code: 0 };
+        let mask = make_mask(frame);
         for c in iter.by_ref().take(frame - 1) {
             code.push(*c, mask);
         }
-        Iter {
-            iter: iter,
-            code: code,
-            mask: mask,
-        }
+        CodeIter { iter, code, mask }
     }
 }
-impl<'a> Iterator for Iter<'a> {
+
+// Traits ---------------------------------------------------------------------
+impl<'a> Iterator for CodeIter<'a> {
     type Item = Code;
+
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|&c| {
             self.code.push(c, self.mask);
@@ -82,106 +100,96 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-fn gen_freq(input: &[u8], frame: usize) -> Map {
-    let mut freq = Map::default();
-    for code in Iter::new(input, frame) {
+// Functions ------------------------------------------------------------------
+#[inline(always)]
+fn encode_byte(c: &u8) -> u8 {
+    (c >> 1) & 0b11
+}
+
+fn make_mask(frame: usize) -> u64 {
+    (1u64 << (2 * frame)) - 1
+}
+
+fn read_file() -> Vec<u8> {
+    if let Ok(file) = File::open(FILE_NAME) {
+        let mut reader = BufReader::new(file);
+        let mut result = Vec::with_capacity(65536);
+        let mut line = String::with_capacity(64);
+
+        loop {
+            match reader.read_line(&mut line) {
+                Ok(b) if b > 0 => {
+                    if line.starts_with(FILE_START) {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+            line.clear();
+        }
+
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(b) if b > 0 => {
+                    let bytes = line.as_bytes();
+                    result.extend(bytes[..bytes.len() - 1].iter().map(encode_byte))
+                }
+                _ => break,
+            }
+        }
+        result
+    } else {
+        unreachable!("File not found");
+    }
+}
+
+fn gen_freq(input: &[u8], frame: usize) -> SequenceCounts {
+    let mut freq = SequenceCounts::default();
+    for code in CodeIter::new(input, frame) {
         *freq.entry(code).or_insert(0) += 1;
     }
     freq
 }
 
-#[derive(Clone, Copy)]
-struct Freq(usize);
-#[derive(Clone, Copy)]
-struct Occ(&'static str);
-
-impl Freq {
-    fn print(&self, freq: &Map) {
-        let mut v: Vec<_> = freq.iter().map(|(&code, &count)| (count, code)).collect();
-        v.sort();
-        let total = v.iter().map(|&(count, _)| count).sum::<u32>() as f32;
-        for &(count, key) in v.iter().rev() {
-            println!(
-                "{} {:.3}",
-                key.to_string(self.0),
-                (count as f32 * 100.) / total
-            );
-        }
-        println!("");
+fn print_percents(n: usize, hmap: &SequenceCounts) {
+    let total = hmap.values().sum::<u32>() as f32;
+    let mut v: Vec<_> = hmap.iter().collect();
+    v.sort_by(|a, b| b.1.cmp(a.1));
+    for &(code, count) in v.iter() {
+        let freq_percent = *count as f32 * 100.0 / total;
+        println!("{} {:.3}", code.to_string(n), freq_percent);
     }
-}
-impl Occ {
-    fn print(&self, freq: &Map) {
-        let count = if freq.contains_key(&Code::from_str(self.0)) {
-            freq[&Code::from_str(self.0)]
-        } else {
-            0
-        };
-        println!("{}\t{}", count, self.0);
-    }
+    println!();
 }
 
-fn read_input() -> Vec<u8> {
-    // let file_name = std::env::args_os()
-    //     .nth(1)
-    //     .and_then(|s| s.into_string().ok())
-    //     .unwrap_or("250000_in".into());
-
-    let file = std::fs::File::open("250000_in").unwrap();
-    let mut r = BufReader::new(file);
-    let key = ">THREE";
-    let mut res = Vec::with_capacity(65536);
-    let mut line = String::with_capacity(64);
-
-    loop {
-        match r.read_line(&mut line) {
-            Ok(b) if b > 0 => {
-                if line.starts_with(key) {
-                    break;
-                }
-            }
-            _ => break,
-        }
-        line.clear();
-    }
-
-    loop {
-        line.clear();
-        match r.read_line(&mut line) {
-            Ok(b) if b > 0 => {
-                let bytes = line.as_bytes();
-                res.extend(bytes[..bytes.len() - 1].into_iter().map(Code::encode_byte))
-            }
-            _ => break,
-        }
-    }
-    res
+fn print_counts(s: &str, hmap: &SequenceCounts) {
+    let code = Code::from_str(s);
+    if hmap.contains_key(&code) {
+        println!("{}\t{}", hmap[&code], s);
+    } else {
+        println!("{}\t{}", 0, s);
+    };
 }
 
 pub fn run() {
-    let occs = vec![
-        Occ("GGTATTTTAATTTATAGT"),
-        Occ("GGTATTTTAATT"),
-        Occ("GGTATT"),
-        Occ("GGTA"),
-        Occ("GGT"),
-    ];
-    let input = Arc::new(read_input());
+    let genome = Arc::new(read_file());
 
     // In reverse to spawn big tasks first
-    let results: Vec<_> = occs
+    let threads: Vec<_> = OCCS
         .into_iter()
-        .map(|item| {
-            let input = input.clone();
-            thread::spawn(move || (item, gen_freq(&input, item.0.len())))
+        .map(|occ| {
+            let input = genome.clone();
+            thread::spawn(move || (occ, gen_freq(&input, occ.len())))
         })
         .collect();
 
-    Freq(1).print(&gen_freq(&input, 1));
-    Freq(2).print(&gen_freq(&input, 2));
+    print_percents(1, &gen_freq(&genome, 1));
+    print_percents(2, &gen_freq(&genome, 2));
 
-    for t in results.into_iter().rev() {
-        let (item, freq) = t.join().unwrap();
-        item.print(&freq);
+    for t in threads.into_iter().rev() {
+        if let Ok((occ, freq)) = t.join() {
+            print_counts(occ, &freq);
+        }
     }
 }

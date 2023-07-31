@@ -31,7 +31,7 @@ impl Code {
         }
         res
     }
-    fn to_string(&self, frame: usize) -> String {
+    fn to_string(self, frame: usize) -> String {
         let mut res = vec![];
         let mut code = self.0;
         for _ in 0..frame {
@@ -70,11 +70,7 @@ impl<'a> Iter<'a> {
         for c in iter.by_ref().take(frame - 1) {
             code.push(*c, mask);
         }
-        Iter {
-            iter: iter,
-            code: code,
-            mask: mask,
-        }
+        Iter { iter, code, mask }
     }
 }
 impl<'a> Iterator for Iter<'a> {
@@ -112,7 +108,7 @@ impl Freq {
                 (count as f32 * 100.) / total
             );
         }
-        println!("");
+        println!();
     }
 }
 impl Occ {
@@ -155,7 +151,7 @@ fn read_input() -> Vec<u8> {
         match r.read_line(&mut line) {
             Ok(b) if b > 0 => {
                 let bytes = line.as_bytes();
-                res.extend(bytes[..bytes.len() - 1].into_iter().map(Code::encode_byte))
+                res.extend(bytes[..bytes.len() - 1].iter().map(Code::encode_byte))
             }
             _ => break,
         }

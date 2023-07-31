@@ -11,12 +11,12 @@ mod bench {
     use super::*;
 
     #[bench]
-    fn bench_prev(b: &mut Bencher) {
-        b.iter(|| prev::run());
+    fn bench_new(b: &mut Bencher) {
+        b.iter(|| new::run());
     }
 
     #[bench]
-    fn bench_new(b: &mut Bencher) {
-        b.iter(|| new::run());
+    fn bench_prev(b: &mut Bencher) {
+        b.iter(|| prev::run());
     }
 }
