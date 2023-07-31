@@ -72,7 +72,6 @@ impl Nucleotide {
     }
 }
 
-
 // Traits ---------------------------------------------------------------------
 impl<'a> Iterator for Genome<'a> {
     type Item = Nucleotide;
@@ -125,7 +124,7 @@ fn read_file() -> Vec<u8> {
     line.clear();
     while let Ok(b) = reader.read_line(&mut line) {
         if b == 0 {
-            break; 
+            break;
         }
         let bytes = line.as_bytes();
         result.extend(bytes[..bytes.len() - 1].iter().map(encode_byte));
