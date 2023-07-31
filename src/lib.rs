@@ -1,3 +1,4 @@
+#![feature(stmt_expr_attributes)]
 pub mod new;
 pub mod prev;
 
