@@ -41,19 +41,25 @@ const FILE_NAME: &str = "250000_in";
 const FILE_START: &str = ">THREE";
 const FILE_BUFFER_SIZE: usize = 65536;
 const FILE_LINE_SIZE: usize = 64;
+const DECIMALS: usize = 3;
 const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
-const SEQS: [&str; 5] = #[rustfmt::skip] {
-    ["GGTATTTTAATTTATAGT", "GGTATTTTAATT", "GGTATT", "GGTA", "GGT"]};
+const SEQS: [&str; 5] = [
+    "GGTATTTTAATTTATAGT",
+    "GGTATTTTAATT",
+    "GGTATT",
+    "GGTA",
+    "GGT",
+];
 
 // Public Functions -----------------------------------------------------------
 pub fn run() {
     let genome = read_file(FILE_NAME);
-    let worker_threads = par_count(&genome);
+    let worker_threads = par_seq_count(&genome);
     println!(
         "{}\n\n{}\n\n{}",
-        show_percents(1, &genome),
-        show_percents(2, &genome),
-        show_counts(worker_threads)
+        show_seq_percents(1, &genome),
+        show_seq_percents(2, &genome),
+        show_seq_counts(worker_threads)
     );
 }
 
@@ -113,15 +119,15 @@ fn read_file(file_name: &str) -> GenomeData {
 }
 
 fn build_iter(k_len: usize, genome: &GenomeData) -> GenomeIter {
-    #[rustfmt::skip] { let mut bytes = genome.iter();
+    let mut bytes = genome.iter();
     let mut seq = SeqHash::default();
     for byte in bytes.by_ref().take(k_len - 1) {
         seq.push_byte(*byte, k_len);
-    } 
-    GenomeIter {seq, k_len, bytes}}
+    }
+    GenomeIter { seq, k_len, bytes }
 }
 
-fn count(k_len: usize, genome: &GenomeData) -> SeqCounts {
+fn seq_count(k_len: usize, genome: &GenomeData) -> SeqCounts {
     let mut seq_counts = SeqCounts::default();
     for seq in build_iter(k_len, genome) {
         *seq_counts.entry(seq).or_insert(0) += 1;
@@ -129,10 +135,10 @@ fn count(k_len: usize, genome: &GenomeData) -> SeqCounts {
     seq_counts
 }
 
-fn par_count(genome: &GenomeData) -> ThreadPool {
+fn par_seq_count(genome: &GenomeData) -> ThreadPool {
     Iterator::collect(SEQS.into_iter().map(|seq_str| {
         let genome = Arc::clone(genome);
-        thread::spawn(move || (seq_str, count(seq_str.len(), &genome)))
+        thread::spawn(move || (seq_str, seq_count(seq_str.len(), &genome)))
     }))
 }
 
@@ -152,17 +158,20 @@ fn calc_percentages(seq_counts: SeqCounts) -> SeqPercents {
     seq_percents
 }
 
-fn show_percents(k_len: usize, genome: &GenomeData) -> String {
-    #[rustfmt::skip] { calc_percentages(count(k_len, &genome)).iter()
-        .map(|(seq, percentage)| {
-            format!("{} {:.3}", seq.to_str(k_len), percentage)
-        }).collect::<Vec<String>>().join("\n")}
+fn show_seq_percents(k_len: usize, genome: &GenomeData) -> String {
+    let percents = calc_percentages(seq_count(k_len, &genome));
+    let mut output = Vec::default();
+    for (seq, percent) in percents {
+        output.push(format!("{} {:.*}", seq.to_str(k_len), DECIMALS, percent));
+    }
+    output.join("\n")
 }
 
-fn show_counts(threads: ThreadPool) -> String {
-    #[rustfmt::skip] { threads.into_iter().rev()
-        .map(|thread| { 
-            let (seq_str, counts) = thread.join().expect("threads halt"); 
-            format!("{}\t{}", counts[&SeqHash::from(seq_str)], seq_str)  
-        }).collect::<Vec<String>>().join("\n")}
+fn show_seq_counts(threads: ThreadPool) -> String {
+    let mut output = Vec::default();
+    for thread in threads.into_iter().rev() {
+        let (seq_str, counts) = thread.join().expect("threads halt");
+        output.push(format!("{}\t{}", counts[&SeqHash::from(seq_str)], seq_str));
+    }
+    output.join("\n")
 }
