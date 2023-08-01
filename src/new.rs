@@ -16,8 +16,10 @@ use {
 };
 
 // Types ----------------------------------------------------------------------
-type NucleotideCounts = HashMap<Nucleotide, u32>;
-type ThreadPool = Vec<thread::JoinHandle<(&'static str, NucleotideCounts)>>;
+#[derive(Hash, Default, PartialEq, PartialOrd, Ord, Eq, Clone, Copy)]
+struct Nucleotide {
+    key: u64,
+}
 
 struct GenomeIter<'a> {
     nucleotide: Nucleotide,
@@ -25,19 +27,12 @@ struct GenomeIter<'a> {
     bytes: Iter<'a, u8>,
 }
 
-#[derive(Hash, Default, PartialEq, PartialOrd, Ord, Eq, Clone, Copy)]
-struct Nucleotide {
-    key: u64,
-}
+type NucleotideCounts = HashMap<Nucleotide, u32>;
+type ThreadPool = Vec<thread::JoinHandle<(&'static str, NucleotideCounts)>>;
 
 // Constants ------------------------------------------------------------------
-const NUCLEOTIDE_STRS: [&str; 5] = [
-    "GGTATTTTAATTTATAGT",
-    "GGTATTTTAATT",
-    "GGTATT",
-    "GGTA",
-    "GGT",
-];
+const NUCLEOTIDE_STRS: [&str; 5] = #[rustfmt::skip] {
+    ["GGTATTTTAATTTATAGT", "GGTATTTTAATT", "GGTATT", "GGTA", "GGT"]};
 const FILE_NAME: &str = "250000_in";
 const FILE_START: &str = ">THREE";
 const FILE_BUFFER_SIZE: usize = 65536;
@@ -78,7 +73,7 @@ impl Nucleotide {
         nucleotide_str.chars().rev().collect()
     }
 
-    fn from(nucleotide_str: &str) -> Self {
+    fn from(nucleotide_str: &str) -> Nucleotide {
         let mut nucleotide = Nucleotide::default();
         for byte in nucleotide_str.as_bytes() {
             nucleotide.push_byte(*byte, nucleotide_str.len());
