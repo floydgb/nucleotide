@@ -1,7 +1,10 @@
 // The Computer Language Benchmarks Game
 // https://salsa.debian.org/benchmarksgame-team/benchmarksgame/
 //
-// by Greg Floyd
+// contributed by Greg Floyd
+
+// Based on k-nucleotide Rust #8
+// Basic sanity & legibility
 
 // Imports --------------------------------------------------------------------
 use {
