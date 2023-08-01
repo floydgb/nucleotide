@@ -17,6 +17,7 @@ use {
 
 // Types ----------------------------------------------------------------------
 type NucleotideCounts = HashMap<Nucleotide, u32>;
+type ThreadPool = Vec<thread::JoinHandle<(&'static str, NucleotideCounts)>>;
 
 struct GenomeIter<'a> {
     nucleotide: Nucleotide,
@@ -44,27 +45,11 @@ const FILE_LINE_SIZE: usize = 80;
 
 // Public Functions -----------------------------------------------------------
 pub fn run() {
-    let genome = Arc::new(read_genome_file());
-    let worker_threads: Vec<_> = NUCLEOTIDE_STRS
-        .into_iter()
-        .map(|nucleotide| {
-            let genome = genome.clone();
-            thread::spawn(move || (nucleotide, count_nucleotides(nucleotide.len(), &genome)))
-        })
-        .collect();
-    for (nucleotide, percentage) in calc_percentages(&count_nucleotides(1, &genome)) {
-        println!("{} {:.3}", nucleotide.to_str(1), percentage);
-    }
-    println!();
-    for (nucleotide, percentage) in calc_percentages(&count_nucleotides(2, &genome)) {
-        println!("{} {:.3}", nucleotide.to_str(2), percentage);
-    }
-    println!();
-    for thread in worker_threads.into_iter().rev() {
-        if let Ok((nucleotide, counts)) = thread.join() {
-            println!("{}\t{}", counts[&Nucleotide::from(nucleotide)], nucleotide);
-        }
-    }
+    let genome_arc = read_genome_file();
+    let worker_threads = par_count_nucleotides(&genome_arc);
+    print_percentages(&count_nucleotides(1, &genome_arc), 1);
+    print_percentages(&count_nucleotides(2, &genome_arc), 2);
+    print_counts(worker_threads);
 }
 
 // Private Methods ------------------------------------------------------------
@@ -115,7 +100,7 @@ impl<'a> Iterator for GenomeIter<'a> {
 }
 
 // Private Functions ----------------------------------------------------------
-fn read_genome_file() -> Vec<u8> {
+fn read_genome_file() -> Arc<Vec<u8>> {
     let mut reader = BufReader::new(File::open(FILE_NAME).unwrap());
     let mut genome_bytes = Vec::with_capacity(FILE_BUFFER_SIZE);
     let mut line = String::with_capacity(FILE_LINE_SIZE);
@@ -129,7 +114,7 @@ fn read_genome_file() -> Vec<u8> {
         }
         line.clear();
     }
-    genome_bytes
+    Arc::new(genome_bytes)
 }
 
 fn build_genome_iter(nucleotide_len: usize, genome: &[u8]) -> GenomeIter {
@@ -138,7 +123,7 @@ fn build_genome_iter(nucleotide_len: usize, genome: &[u8]) -> GenomeIter {
     for byte in bytes.by_ref().take(nucleotide_len - 1) {
         nucleotide.push_byte(*byte, nucleotide_len);
     }
-    #[rustfmt::skip] { GenomeIter {nucleotide, nucleotide_len, bytes} }
+    #[rustfmt::skip] {GenomeIter {nucleotide, nucleotide_len, bytes}}
 }
 
 //todo: pass in genome_iter
@@ -150,18 +135,44 @@ fn count_nucleotides(nucleotide_len: usize, genome: &[u8]) -> NucleotideCounts {
     count_table
 }
 
+fn par_count_nucleotides(genome_arc: &Arc<Vec<u8>>) -> ThreadPool {
+    let worker_threads: Vec<_> = NUCLEOTIDE_STRS
+        .into_iter()
+        .map(|nucleotide| {
+            let genome_arc = genome_arc.clone();
+            thread::spawn(move || (nucleotide, count_nucleotides(nucleotide.len(), &genome_arc)))
+        })
+        .collect();
+    worker_threads
+}
+
 fn calc_percentages(count_table: &NucleotideCounts) -> Vec<(&Nucleotide, f32)> {
-    let mut percent_table = Vec::new();
-    let total_nucleotides = count_table.values().sum::<u32>();
-    for (nucleotide, count) in sort_nucleotide_by_count(count_table) {
+    let mut percent_table = Vec::default();
+    let total_nucleotides: u32 = count_table.values().sum();
+    for (nucleotide, count) in sort_nucleotides_by_count(count_table) {
         let percent = *count as f32 / total_nucleotides as f32 * 100_f32;
         percent_table.push((nucleotide, percent));
     }
     percent_table
 }
 
-fn sort_nucleotide_by_count(count_table: &NucleotideCounts) -> Vec<(&Nucleotide, &u32)> {
+fn sort_nucleotides_by_count(count_table: &NucleotideCounts) -> Vec<(&Nucleotide, &u32)> {
     let mut sorted_table: Vec<_> = count_table.iter().collect();
     sorted_table.sort_by(|(_, count_lhs), (_, count_rhs)| count_rhs.cmp(count_lhs));
     sorted_table
+}
+
+fn print_counts(worker_threads: ThreadPool) {
+    for thread in worker_threads.into_iter().rev() {
+        if let Ok((nucleotide, counts)) = thread.join() {
+            println!("{}\t{}", counts[&Nucleotide::from(nucleotide)], nucleotide);
+        }
+    }
+}
+
+fn print_percentages(count_table: &NucleotideCounts, nucleotide_len: usize) {
+    for (nucleotide, percentage) in calc_percentages(count_table) {
+        println!("{} {:.3}", nucleotide.to_str(nucleotide_len), percentage);
+    }
+    println!();
 }
