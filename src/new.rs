@@ -148,17 +148,17 @@ fn calc_percentages(table: &NucleotideCounts) -> Vec<(&Nucleotide, f32)> {
 }
 
 fn show_percents(k_len: usize, genome: &GenomeData) -> String {
-    #[rustfmt::skip] { Iterator::collect::<Vec<_>>(calc_percentages(&count(k_len, &genome)).iter()
+    #[rustfmt::skip] { calc_percentages(&count(k_len, &genome)).iter()
         .map(|(nucleotide, percentage)| {
-            format!("{} {:.3}", nucleotide.to_str(k_len), percentage)}))
-        .join("\n")}
+            format!("{} {:.3}", nucleotide.to_str(k_len), percentage)})
+        .collect::<Vec<String>>().join("\n")}
 }
 
 fn show_counts(threads: ThreadPool) -> String {
-    #[rustfmt::skip] { Iterator::collect::<Vec<String>>(threads.into_iter().rev()
+    #[rustfmt::skip] { threads.into_iter().rev()
         .map(|thread| { match thread.join().expect("threads halt") {
             (nucleotide, counts) => {
                 let count = counts[&Nucleotide::from(nucleotide)];
-                format!("{}\t{}", count, nucleotide).into()}}}))
-        .join("\n")}
+                format!("{}\t{}", count, nucleotide).into()}}})
+        .collect::<Vec<String>>().join("\n")}
 }
