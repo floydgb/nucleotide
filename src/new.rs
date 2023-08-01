@@ -27,28 +27,29 @@ struct GenomeIter<'a> {
     bytes: Iter<'a, u8>,
 }
 
+type GenomeData = Arc<Vec<u8>>;
 type NucleotideCounts = HashMap<Nucleotide, u32>;
 type ThreadPool = Vec<thread::JoinHandle<(&'static str, NucleotideCounts)>>;
 
 // Constants ------------------------------------------------------------------
+const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
 const NUCLEOTIDE_STRS: [&str; 5] = #[rustfmt::skip] {
     ["GGTATTTTAATTTATAGT", "GGTATTTTAATT", "GGTATT", "GGTA", "GGT"]};
 const FILE_NAME: &str = "250000_in";
 const FILE_START: &str = ">THREE";
 const FILE_BUFFER_SIZE: usize = 65536;
-const FILE_LINE_SIZE: usize = 80;
+const FILE_LINE_SIZE: usize = 64;
 
 // Public Functions -----------------------------------------------------------
 pub fn run() {
     let genome_arc = read_genome_file();
     let worker_threads = par_count_nucleotides(&genome_arc);
-    print_percentages(&count_nucleotides(1, &genome_arc), 1);
-    print_percentages(&count_nucleotides(2, &genome_arc), 2);
+    print_percentages(&genome_arc, 1);
+    print_percentages(&genome_arc, 2);
     print_counts(worker_threads);
 }
 
 // Private Methods ------------------------------------------------------------
-// todo: keep track of its own length
 impl Nucleotide {
     fn push_byte(&mut self, byte: u8, nucleotide_len: usize) {
         self.key <<= 2;
@@ -57,20 +58,11 @@ impl Nucleotide {
     }
 
     fn to_str(self, nucleotide_len: usize) -> String {
-        let mut nucleotide_str = String::default();
-        let mut hash_key = self.key as u8;
-        for _ in 0..nucleotide_len {
-            let char = match hash_key & 0b11 {
-                0 => b'A',
-                1 => b'C',
-                2 => b'T',
-                3 => b'G',
-                _ => unreachable!(),
-            };
-            nucleotide_str.push(char.into());
-            hash_key >>= 2;
+        let mut result = String::with_capacity(nucleotide_len);
+        for i in (0..nucleotide_len).rev() {
+            result.push(NUCLEOTIDES[((self.key >> (2 * i)) & 0b11) as usize]);
         }
-        nucleotide_str.chars().rev().collect()
+        result
     }
 
     fn from(nucleotide_str: &str) -> Nucleotide {
@@ -95,21 +87,21 @@ impl<'a> Iterator for GenomeIter<'a> {
 }
 
 // Private Functions ----------------------------------------------------------
-fn read_genome_file() -> Arc<Vec<u8>> {
+fn read_genome_file() -> GenomeData {
     let mut reader = BufReader::new(File::open(FILE_NAME).unwrap());
-    let mut genome_bytes = Vec::with_capacity(FILE_BUFFER_SIZE);
-    let mut line = String::with_capacity(FILE_LINE_SIZE);
+    let mut bytes = Vec::with_capacity(FILE_BUFFER_SIZE);
+    let mut line = Vec::with_capacity(FILE_LINE_SIZE);
     let mut is_genome = false;
-    while let Ok(b) = reader.read_line(&mut line) {
-        match (is_genome, b) {
-            (false, _) if line.starts_with(FILE_START) => is_genome = true,
-            (false, _) => {}
-            (true, 0) => break,
-            (true, _) => genome_bytes.extend(line.as_bytes()[..line.as_bytes().len() - 1].iter()),
+    while let Ok(b) = reader.read_until(b'\n', &mut line) {
+        match (is_genome, b, line.starts_with(FILE_START.as_bytes())) {
+            (true, 0, _) => break,
+            (true, _, _) => bytes.extend_from_slice(&line[..b - 1]),
+            (false, _, true) => is_genome = true,
+            _ => (),
         }
         line.clear();
     }
-    Arc::new(genome_bytes)
+    Arc::new(bytes)
 }
 
 fn build_genome_iter(nucleotide_len: usize, genome: &[u8]) -> GenomeIter {
@@ -121,7 +113,6 @@ fn build_genome_iter(nucleotide_len: usize, genome: &[u8]) -> GenomeIter {
     #[rustfmt::skip] {GenomeIter {nucleotide, nucleotide_len, bytes}}
 }
 
-//todo: pass in genome_iter
 fn count_nucleotides(nucleotide_len: usize, genome: &[u8]) -> NucleotideCounts {
     let mut count_table = NucleotideCounts::default();
     for nucleotide in build_genome_iter(nucleotide_len, genome) {
@@ -130,7 +121,7 @@ fn count_nucleotides(nucleotide_len: usize, genome: &[u8]) -> NucleotideCounts {
     count_table
 }
 
-fn par_count_nucleotides(genome_arc: &Arc<Vec<u8>>) -> ThreadPool {
+fn par_count_nucleotides(genome_arc: &GenomeData) -> ThreadPool {
     let worker_threads: Vec<_> = NUCLEOTIDE_STRS
         .into_iter()
         .map(|nucleotide| {
@@ -165,8 +156,9 @@ fn print_counts(worker_threads: ThreadPool) {
     }
 }
 
-fn print_percentages(count_table: &NucleotideCounts, nucleotide_len: usize) {
-    for (nucleotide, percentage) in calc_percentages(count_table) {
+fn print_percentages(genome_arc: &GenomeData, nucleotide_len: usize) {
+    let count_table = count_nucleotides(nucleotide_len, &genome_arc);
+    for (nucleotide, percentage) in calc_percentages(&count_table) {
         println!("{} {:.3}", nucleotide.to_str(nucleotide_len), percentage);
     }
     println!();
