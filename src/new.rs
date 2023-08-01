@@ -16,16 +16,16 @@ use {
 };
 
 // Types ----------------------------------------------------------------------
-type NucleotideCounts = HashMap<NucleotideHash, u32>;
+type NucleotideCounts = HashMap<Nucleotide, u32>;
 
-struct Genome<'a> {
-    nucleotide: NucleotideHash,
+struct GenomeIter<'a> {
+    nucleotide: Nucleotide,
     nucleotide_len: usize,
     bytes: Iter<'a, u8>,
 }
 
 #[derive(Hash, Default, PartialEq, PartialOrd, Ord, Eq, Clone, Copy)]
-struct NucleotideHash {
+struct Nucleotide {
     key: u64,
 }
 
@@ -44,27 +44,32 @@ const FILE_LINE_SIZE: usize = 80;
 
 // Public Functions -----------------------------------------------------------
 pub fn run() {
-    let genome_arc = Arc::new(read_genome_file());
-
+    let genome = Arc::new(read_genome_file());
     let worker_threads: Vec<_> = NUCLEOTIDE_STRS
         .into_iter()
         .map(|nucleotide| {
-            let genome = genome_arc.clone();
+            let genome = genome.clone();
             thread::spawn(move || (nucleotide, count_nucleotides(nucleotide.len(), &genome)))
         })
         .collect();
-
-    print_percentages(1, &genome_arc);
-    print_percentages(2, &genome_arc);
+    for (nucleotide, percentage) in calc_percentages(&count_nucleotides(1, &genome)) {
+        println!("{} {:.3}", nucleotide.to_str(1), percentage);
+    }
+    println!();
+    for (nucleotide, percentage) in calc_percentages(&count_nucleotides(2, &genome)) {
+        println!("{} {:.3}", nucleotide.to_str(2), percentage);
+    }
+    println!();
     for thread in worker_threads.into_iter().rev() {
         if let Ok((nucleotide, counts)) = thread.join() {
-            print_counts(nucleotide, &counts);
+            println!("{}\t{}", counts[&Nucleotide::from(nucleotide)], nucleotide);
         }
     }
 }
 
 // Private Methods ------------------------------------------------------------
-impl NucleotideHash {
+// todo: keep track of its own length
+impl Nucleotide {
     fn push_byte(&mut self, byte: u8, nucleotide_len: usize) {
         self.key <<= 2;
         self.key |= ((byte >> 1) & 0b11) as u64;
@@ -88,8 +93,8 @@ impl NucleotideHash {
         nucleotide_str.chars().rev().collect()
     }
 
-    fn from_str(nucleotide_str: &str) -> Self {
-        let mut nucleotide = NucleotideHash::default();
+    fn from(nucleotide_str: &str) -> Self {
+        let mut nucleotide = Nucleotide::default();
         for byte in nucleotide_str.as_bytes() {
             nucleotide.push_byte(*byte, nucleotide_str.len());
         }
@@ -98,10 +103,10 @@ impl NucleotideHash {
 }
 
 // Private Traits -------------------------------------------------------------
-impl<'a> Iterator for Genome<'a> {
-    type Item = NucleotideHash;
+impl<'a> Iterator for GenomeIter<'a> {
+    type Item = Nucleotide;
 
-    fn next(&mut self) -> Option<NucleotideHash> {
+    fn next(&mut self) -> Option<Nucleotide> {
         self.bytes.next().map(|&byte| {
             self.nucleotide.push_byte(byte, self.nucleotide_len);
             self.nucleotide
@@ -110,62 +115,53 @@ impl<'a> Iterator for Genome<'a> {
 }
 
 // Private Functions ----------------------------------------------------------
-fn new_genome(nucleotide_len: usize, bytes: &[u8]) -> Genome {
-    let mut bytes = bytes.iter();
-    let mut nucleotide = NucleotideHash::default();
-    for byte in bytes.by_ref().take(nucleotide_len - 1) {
-        nucleotide.push_byte(*byte, nucleotide_len);
-    }
-    #[rustfmt::skip] { Genome {nucleotide, nucleotide_len, bytes} }
-}
-
 fn read_genome_file() -> Vec<u8> {
     let mut reader = BufReader::new(File::open(FILE_NAME).unwrap());
     let mut genome_bytes = Vec::with_capacity(FILE_BUFFER_SIZE);
     let mut line = String::with_capacity(FILE_LINE_SIZE);
-    while let Ok(_) = reader.read_line(&mut line) {
-        if line.starts_with(FILE_START) {
-            break;
-        }
-        line.clear();
-    }
-    line.clear();
+    let mut is_genome = false;
     while let Ok(b) = reader.read_line(&mut line) {
-        if b == 0 {
-            break;
+        match (is_genome, b) {
+            (false, _) if line.starts_with(FILE_START) => is_genome = true,
+            (false, _) => {}
+            (true, 0) => break,
+            (true, _) => genome_bytes.extend(line.as_bytes()[..line.as_bytes().len() - 1].iter()),
         }
-        let bytes = line.as_bytes();
-        genome_bytes.extend(bytes[..bytes.len() - 1].iter());
         line.clear();
     }
     genome_bytes
 }
 
+fn build_genome_iter(nucleotide_len: usize, genome: &[u8]) -> GenomeIter {
+    let mut bytes = genome.iter();
+    let mut nucleotide = Nucleotide::default();
+    for byte in bytes.by_ref().take(nucleotide_len - 1) {
+        nucleotide.push_byte(*byte, nucleotide_len);
+    }
+    #[rustfmt::skip] { GenomeIter {nucleotide, nucleotide_len, bytes} }
+}
+
+//todo: pass in genome_iter
 fn count_nucleotides(nucleotide_len: usize, genome: &[u8]) -> NucleotideCounts {
     let mut count_table = NucleotideCounts::default();
-    for nucleotide in new_genome(nucleotide_len, genome) {
+    for nucleotide in build_genome_iter(nucleotide_len, genome) {
         *count_table.entry(nucleotide).or_insert(0) += 1;
     }
     count_table
 }
 
-fn print_percentages(nucleotide_len: usize, genome: &[u8]) {
-    let table = &count_nucleotides(nucleotide_len, &genome);
-    let total_nucleotides = table.values().sum::<u32>() as f32;
-    let mut sortable_table: Vec<_> = table.iter().collect();
-    sortable_table.sort_by(|(_, count_lhs), (_, count_rhs)| count_rhs.cmp(count_lhs));
-    for (nucleotide, count) in sortable_table {
-        let percentage = *count as f32 * 100.0 / total_nucleotides;
-        println!("{} {:.3}", nucleotide.to_str(nucleotide_len), percentage);
+fn calc_percentages(count_table: &NucleotideCounts) -> Vec<(&Nucleotide, f32)> {
+    let mut percent_table = Vec::new();
+    let total_nucleotides = count_table.values().sum::<u32>();
+    for (nucleotide, count) in sort_nucleotide_by_count(count_table) {
+        let percent = *count as f32 / total_nucleotides as f32 * 100_f32;
+        percent_table.push((nucleotide, percent));
     }
-    println!();
+    percent_table
 }
 
-fn print_counts(nucleotide_str: &str, table: &NucleotideCounts) {
-    let hash_key = NucleotideHash::from_str(nucleotide_str);
-    if table.contains_key(&hash_key) {
-        println!("{}\t{}", table[&hash_key], nucleotide_str);
-    } else {
-        println!("{}\t{}", 0, nucleotide_str);
-    };
+fn sort_nucleotide_by_count(count_table: &NucleotideCounts) -> Vec<(&Nucleotide, &u32)> {
+    let mut sorted_table: Vec<_> = count_table.iter().collect();
+    sorted_table.sort_by(|(_, count_lhs), (_, count_rhs)| count_rhs.cmp(count_lhs));
+    sorted_table
 }
