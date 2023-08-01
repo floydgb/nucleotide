@@ -29,6 +29,8 @@ struct GenomeIter<'a> {
 
 type GenomeData = Arc<Vec<u8>>;
 type SeqCounts = HashMap<SeqHash, u32>;
+type SortedSeqCounts = Vec<(SeqHash, u32)>;
+type SeqPercents = Vec<(SeqHash, f32)>;
 type ThreadPool = Vec<thread::JoinHandle<(&'static str, SeqCounts)>>;
 
 // Constants ------------------------------------------------------------------
@@ -117,38 +119,38 @@ fn build_iter(k_len: usize, genome: &GenomeData) -> GenomeIter {
 }
 
 fn count(k_len: usize, genome: &GenomeData) -> SeqCounts {
-    let mut table = SeqCounts::default();
+    let mut seq_counts = SeqCounts::default();
     for seq in build_iter(k_len, genome) {
-        *table.entry(seq).or_insert(0) += 1;
+        *seq_counts.entry(seq).or_insert(0) += 1;
     }
-    table
+    seq_counts
 }
 
 fn par_count(genome: &GenomeData) -> ThreadPool {
-    Iterator::collect(SEQS.into_iter().map(|seq| {
+    Iterator::collect(SEQS.into_iter().map(|seq_str| {
         let genome = Arc::clone(genome);
-        thread::spawn(move || (seq, count(seq.len(), &genome)))
+        thread::spawn(move || (seq_str, count(seq_str.len(), &genome)))
     }))
 }
 
-fn sort_by_count(table: &SeqCounts) -> Vec<(&SeqHash, &u32)> {
-    let mut sorted_table: Vec<_> = table.iter().collect();
-    sorted_table.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
-    sorted_table
+fn sort_by_count(seq_counts: SeqCounts) -> SortedSeqCounts {
+    let mut sorted_seqs: SortedSeqCounts = seq_counts.into_iter().collect();
+    sorted_seqs.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
+    sorted_seqs
 }
 
-fn calc_percentages(table: &SeqCounts) -> Vec<(&SeqHash, f32)> {
-    let mut percent_table = Vec::default();
-    let total_seqs: u32 = table.values().sum();
-    for (seq, count) in sort_by_count(table) {
-        let percent = *count as f32 / total_seqs as f32 * 100_f32;
-        percent_table.push((seq, percent));
+fn calc_percentages(seq_counts: SeqCounts) -> SeqPercents {
+    let mut seq_percents = Vec::default();
+    let total_seqs: u32 = seq_counts.values().sum();
+    for (seq, count) in sort_by_count(seq_counts) {
+        let percent = count as f32 / total_seqs as f32 * 100_f32;
+        seq_percents.push((seq, percent));
     }
-    percent_table
+    seq_percents
 }
 
 fn show_percents(k_len: usize, genome: &GenomeData) -> String {
-    #[rustfmt::skip] { calc_percentages(&count(k_len, &genome)).iter()
+    #[rustfmt::skip] { calc_percentages(count(k_len, &genome)).iter()
         .map(|(seq, percentage)| {
             format!("{} {:.3}", seq.to_str(k_len), percentage)
         }).collect::<Vec<String>>().join("\n")}
@@ -157,7 +159,7 @@ fn show_percents(k_len: usize, genome: &GenomeData) -> String {
 fn show_counts(threads: ThreadPool) -> String {
     #[rustfmt::skip] { threads.into_iter().rev()
         .map(|thread| { 
-            let (seq, counts) = thread.join().expect("threads halt"); 
-            format!("{}\t{}", counts[&SeqHash::from(seq)], seq)  
+            let (seq_str, counts) = thread.join().expect("threads halt"); 
+            format!("{}\t{}", counts[&SeqHash::from(seq_str)], seq_str)  
         }).collect::<Vec<String>>().join("\n")}
 }
