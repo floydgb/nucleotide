@@ -17,19 +17,19 @@ use {
 
 // Types ----------------------------------------------------------------------
 #[derive(Hash, Default, PartialEq, PartialOrd, Ord, Eq, Clone, Copy)]
-struct Nucleotide {
+struct SeqHash {
     key: u64,
 }
 
 struct GenomeIter<'a> {
-    nucleotide: Nucleotide,
+    seq: SeqHash,
     k_len: usize,
     bytes: Iter<'a, u8>,
 }
 
 type GenomeData = Arc<Vec<u8>>;
-type NucleotideCounts = HashMap<Nucleotide, u32>;
-type ThreadPool = Vec<thread::JoinHandle<(&'static str, NucleotideCounts)>>;
+type SeqCounts = HashMap<SeqHash, u32>;
+type ThreadPool = Vec<thread::JoinHandle<(&'static str, SeqCounts)>>;
 
 // Constants ------------------------------------------------------------------
 const FILE_NAME: &str = "250000_in";
@@ -37,7 +37,7 @@ const FILE_START: &str = ">THREE";
 const FILE_BUFFER_SIZE: usize = 65536;
 const FILE_LINE_SIZE: usize = 64;
 const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
-const NUCLEOTIDE_STRS: [&str; 5] = #[rustfmt::skip] {
+const SEQS: [&str; 5] = #[rustfmt::skip] {
     ["GGTATTTTAATTTATAGT", "GGTATTTTAATT", "GGTATT", "GGTA", "GGT"]};
 
 // Public Functions -----------------------------------------------------------
@@ -53,7 +53,7 @@ pub fn run() {
 }
 
 // Private Methods ------------------------------------------------------------
-impl Nucleotide {
+impl SeqHash {
     fn push_byte(&mut self, byte: u8, k_len: usize) {
         self.key <<= 2;
         self.key |= ((byte >> 1) & 0b11) as u64;
@@ -68,23 +68,23 @@ impl Nucleotide {
         result
     }
 
-    fn from(nucleotide_str: &str) -> Nucleotide {
-        let mut nucleotide = Nucleotide::default();
-        for byte in nucleotide_str.as_bytes() {
-            nucleotide.push_byte(*byte, nucleotide_str.len());
+    fn from(seq_str: &str) -> SeqHash {
+        let mut seq = SeqHash::default();
+        for byte in seq_str.as_bytes() {
+            seq.push_byte(*byte, seq_str.len());
         }
-        nucleotide
+        seq
     }
 }
 
 // Private Traits -------------------------------------------------------------
 impl<'a> Iterator for GenomeIter<'a> {
-    type Item = Nucleotide;
+    type Item = SeqHash;
 
-    fn next(&mut self) -> Option<Nucleotide> {
+    fn next(&mut self) -> Option<SeqHash> {
         self.bytes.next().map(|&byte| {
-            self.nucleotide.push_byte(byte, self.k_len);
-            self.nucleotide
+            self.seq.push_byte(byte, self.k_len);
+            self.seq
         })
     }
 }
@@ -109,56 +109,55 @@ fn read_file(file_name: &str) -> GenomeData {
 
 fn build_iter(k_len: usize, genome: &GenomeData) -> GenomeIter {
     #[rustfmt::skip] { let mut bytes = genome.iter();
-    let mut nucleotide = Nucleotide::default();
+    let mut seq = SeqHash::default();
     for byte in bytes.by_ref().take(k_len - 1) {
-        nucleotide.push_byte(*byte, k_len);
+        seq.push_byte(*byte, k_len);
     } 
-    GenomeIter {nucleotide, k_len, bytes}}
+    GenomeIter {seq, k_len, bytes}}
 }
 
-fn count(k_len: usize, genome: &GenomeData) -> NucleotideCounts {
-    let mut table = NucleotideCounts::default();
-    for nucleotide in build_iter(k_len, genome) {
-        *table.entry(nucleotide).or_insert(0) += 1;
+fn count(k_len: usize, genome: &GenomeData) -> SeqCounts {
+    let mut table = SeqCounts::default();
+    for seq in build_iter(k_len, genome) {
+        *table.entry(seq).or_insert(0) += 1;
     }
     table
 }
 
 fn par_count(genome: &GenomeData) -> ThreadPool {
-    Iterator::collect(NUCLEOTIDE_STRS.into_iter().map(|nucleotide| {
+    Iterator::collect(SEQS.into_iter().map(|seq| {
         let genome = Arc::clone(genome);
-        thread::spawn(move || (nucleotide, count(nucleotide.len(), &genome)))
+        thread::spawn(move || (seq, count(seq.len(), &genome)))
     }))
 }
 
-fn sort_by_count(table: &NucleotideCounts) -> Vec<(&Nucleotide, &u32)> {
+fn sort_by_count(table: &SeqCounts) -> Vec<(&SeqHash, &u32)> {
     let mut sorted_table: Vec<_> = table.iter().collect();
     sorted_table.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
     sorted_table
 }
 
-fn calc_percentages(table: &NucleotideCounts) -> Vec<(&Nucleotide, f32)> {
+fn calc_percentages(table: &SeqCounts) -> Vec<(&SeqHash, f32)> {
     let mut percent_table = Vec::default();
-    let total_nucleotides: u32 = table.values().sum();
-    for (nucleotide, count) in sort_by_count(table) {
-        let percent = *count as f32 / total_nucleotides as f32 * 100_f32;
-        percent_table.push((nucleotide, percent));
+    let total_seqs: u32 = table.values().sum();
+    for (seq, count) in sort_by_count(table) {
+        let percent = *count as f32 / total_seqs as f32 * 100_f32;
+        percent_table.push((seq, percent));
     }
     percent_table
 }
 
 fn show_percents(k_len: usize, genome: &GenomeData) -> String {
     #[rustfmt::skip] { calc_percentages(&count(k_len, &genome)).iter()
-        .map(|(nucleotide, percentage)| {
-            format!("{} {:.3}", nucleotide.to_str(k_len), percentage)})
-        .collect::<Vec<String>>().join("\n")}
+        .map(|(seq, percentage)| {
+            format!("{} {:.3}", seq.to_str(k_len), percentage)
+        }).collect::<Vec<String>>().join("\n")}
 }
 
 fn show_counts(threads: ThreadPool) -> String {
     #[rustfmt::skip] { threads.into_iter().rev()
-        .map(|thread| { match thread.join().expect("threads halt") {
-            (nucleotide, counts) => {
-                let count = counts[&Nucleotide::from(nucleotide)];
-                format!("{}\t{}", count, nucleotide).into()}}})
-        .collect::<Vec<String>>().join("\n")}
+        .map(|thread| { 
+            let (seq, counts) = thread.join().expect("threads halt"); 
+            format!("{}\t{}", counts[&SeqHash::from(seq)], seq)  
+        }).collect::<Vec<String>>().join("\n")}
 }
