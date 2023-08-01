@@ -118,7 +118,7 @@ fn read_file(file_name: &str) -> GenomeData {
     Arc::new(bytes)
 }
 
-fn build_iter(k_len: usize, genome: &GenomeData) -> GenomeIter {
+fn genome_iter(k_len: usize, genome: &GenomeData) -> GenomeIter {
     let mut bytes = genome.iter();
     let mut seq = SeqHash::default();
     for byte in bytes.by_ref().take(k_len - 1) {
@@ -129,7 +129,7 @@ fn build_iter(k_len: usize, genome: &GenomeData) -> GenomeIter {
 
 fn seq_count(k_len: usize, genome: &GenomeData) -> SeqCounts {
     let mut seq_counts = SeqCounts::default();
-    for seq in build_iter(k_len, genome) {
+    for seq in genome_iter(k_len, genome) {
         *seq_counts.entry(seq).or_insert(0) += 1;
     }
     seq_counts
