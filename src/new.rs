@@ -44,7 +44,7 @@ pub fn run() {
     );
 }
 
-// Private Methods ------------------------------------------------------------
+// Private Functions ----------------------------------------------------------
 impl Seq {
     fn push_byte(&mut self, byte: u8, seq_len: usize) {
         self.hash_key <<= 2;
@@ -70,7 +70,6 @@ impl Seq {
     }
 }
 
-// Private Traits -------------------------------------------------------------
 impl<'a> Iterator for GenomeIter<'a> {
     type Item = Seq;
 
@@ -82,7 +81,6 @@ impl<'a> Iterator for GenomeIter<'a> {
     }
 }
 
-// Private Functions ----------------------------------------------------------
 fn read_genome_file(file_name: &str) -> Genome {
     let mut buf = BufReader::new(File::open(file_name).expect("file found"));
     let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
