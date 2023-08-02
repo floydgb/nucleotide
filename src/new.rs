@@ -7,15 +7,11 @@
 // Basic sanity & legibility
 
 // Imports --------------------------------------------------------------------
+#[rustfmt::skip] 
 use {
+    crate::seq,
     hashbrown::HashMap,
-    std::{
-        fs::File,
-        io::{BufRead, BufReader},
-        slice::Iter,
-        sync::Arc,
-        thread::{spawn, JoinHandle},
-    },
+    std::{fs::File, io::{BufRead, BufReader}, slice::Iter, sync::Arc, thread}
 };
 
 // Types ----------------------------------------------------------------------
@@ -34,26 +30,18 @@ type Genome = Arc<Vec<u8>>;
 type SeqCnts = HashMap<Seq, u32>;
 type SeqCntsSort = Vec<(Seq, u32)>;
 type SeqPcts = Vec<(Seq, f32)>;
-type ThrdPool = Vec<JoinHandle<(&'static str, SeqCnts)>>;
-
-// Constants ------------------------------------------------------------------
-const FILE_NAME: &str = "250000_in";
-const FILE_START: &str = ">THREE";
-const FILE_BUFFER_SIZE: usize = 65536;
-const FILE_LINE_SIZE: usize = 64;
-const DECIMALS: usize = 3;
-const SEQ_STRS: [&str; 5] = #[rustfmt::skip] {
-        ["GGTATTTTAATTTATAGT", "GGTATTTTAATT", "GGTATT", "GGTA", "GGT"]};
+type Thrds = Vec<thread::JoinHandle<(String, SeqCnts)>>;
 
 // Public Functions -----------------------------------------------------------
+#[rustfmt::skip]
 pub fn run() {
-    let genome = read_file(FILE_NAME);
-    let worker_thrds = par_seq_cnt(&genome);
-    print!(
-        "{}\n\n{}\n\n{}\n",
-        show_seq_pcts(genome_iter(1, &genome)),
-        show_seq_pcts(genome_iter(2, &genome)),
-        show_seq_cnts(worker_thrds)
+    let seqs = seq!["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"];
+    let genome = read_genome_file("250000_in");
+    let threads = seq_cnts_par(seqs, &genome);
+    println!("{}\n\n{}\n\n{}",
+        show_all_seqs_len(1, &genome),
+        show_all_seqs_len(2, &genome),
+        show_seq_cnts_par(threads)
     );
 }
 
@@ -65,11 +53,11 @@ impl Seq {
         self.hash_key &= (1u64 << (2 * seq_len)) - 1;
     }
 
-    fn to_str(self, seq_len: usize) -> String {
-        let nucleotide = ['A', 'C', 'T', 'G'];
+    fn into(self, seq_len: usize) -> String {
+        const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
         let mut str = String::with_capacity(seq_len);
         for i in (0..seq_len).rev() {
-            str.push(nucleotide[((self.hash_key >> (2 * i)) & 0b11) as usize]);
+            str.push(NUCLEOTIDES[((self.hash_key >> (2 * i)) & 0b11) as usize]);
         }
         str
     }
@@ -96,13 +84,12 @@ impl<'a> Iterator for GenomeIter<'a> {
 }
 
 // Private Functions ----------------------------------------------------------
-fn read_file(file_name: &str) -> Genome {
+fn read_genome_file(file_name: &str) -> Genome {
     let mut buf = BufReader::new(File::open(file_name).expect("file found"));
-    let mut bytes = Vec::with_capacity(FILE_BUFFER_SIZE);
-    let mut line = Vec::with_capacity(FILE_LINE_SIZE);
+    let (mut bytes, mut line) = (Vec::default(), Vec::default());
     let mut genome_start = false;
     while let Ok(b) = buf.read_until(b'\n', &mut line) {
-        match (genome_start, b, line.starts_with(FILE_START.as_bytes())) {
+        match (genome_start, b, line.starts_with(">THREE".as_bytes())) {
             (true, 0, _) => break,
             (true, _, _) => bytes.extend_from_slice(&line[..b - 1]),
             (false, _, true) => genome_start = true,
@@ -114,8 +101,7 @@ fn read_file(file_name: &str) -> Genome {
 }
 
 fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
-    let mut haystack = genome.iter();
-    let mut needle = Seq::default();
+    let (mut haystack, mut needle) = (genome.iter(), Seq::default());
     for byte in haystack.by_ref().take(seq_len - 1) {
         needle.push_byte(*byte, seq_len);
     }
@@ -130,10 +116,10 @@ fn seq_cnt(g_iter: GenomeIter) -> SeqCnts {
     seq_cnts
 }
 
-fn par_seq_cnt(genome: &Genome) -> ThrdPool {
-    Iterator::collect(SEQ_STRS.into_iter().map(|seq_str| {
-        let genome = Arc::clone(genome);
-        spawn(move || (seq_str, seq_cnt(genome_iter(seq_str.len(), &genome))))
+fn seq_cnts_par(seq_strs: Vec<String>, genome: &Genome) -> Thrds {
+    Iterator::collect(seq_strs.into_iter().map(|str| {
+        let (seq_len, genome) = (str.len(), Arc::clone(genome));
+        thread::spawn(move || (str, seq_cnt(genome_iter(seq_len, &genome))))
     }))
 }
 
@@ -152,20 +138,20 @@ fn calc_pcts(seq_cnts: SeqCnts) -> SeqPcts {
     seq_pcts
 }
 
-fn show_seq_pcts(g_iter: GenomeIter) -> String {
-    let (seq_len, seq_cnts) = (g_iter.seq_len, seq_cnt(g_iter));
+fn show_all_seqs_len(seq_len: usize, genome: &Genome) -> String {
     let mut str = Vec::default();
-    for (seq, pct) in calc_pcts(seq_cnts) {
-        str.push(format!("{} {:.*}", seq.to_str(seq_len), DECIMALS, pct));
+    for (seq, pct) in calc_pcts(seq_cnt(genome_iter(seq_len, genome))) {
+        str.push(format!("{} {:.3}", seq.into(seq_len), pct));
     }
     str.join("\n")
 }
 
-fn show_seq_cnts(thrds: ThrdPool) -> String {
+fn show_seq_cnts_par(pool: Thrds) -> String {
     let mut str = Vec::default();
-    for thrd in thrds.into_iter().rev() {
+    for thrd in pool {
         let (seq_str, seq_cnts) = thrd.join().expect("thread halts");
-        str.push(format!("{}\t{}", seq_cnts[&Seq::from(seq_str)], seq_str));
+        let count = seq_cnts.get(&Seq::from(&seq_str)).unwrap_or(&0);
+        str.push(format!("{}\t{}", count, seq_str));
     }
     str.join("\n")
 }
