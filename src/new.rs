@@ -88,13 +88,11 @@ fn read_genome_file(file_name: &str) -> Genome {
     let mut buf = BufReader::new(File::open(file_name).expect("file found"));
     let (mut bytes, mut line) = (Vec::new(), Vec::new());
     let mut genome_start = false;
-    while let Ok(b) = buf.read_until(b'\n', &mut line) {
-        match (genome_start, b, line.starts_with(">THREE".as_bytes())) {
-            (true, 0, _) => break,
-            (true, _, _) => bytes.extend_from_slice(&line[..b - 1]),
-            (false, _, true) => genome_start = true,
-            _ => (),
+    while buf.read_until(b'\n', &mut line).expect("read line") > 0 {
+        if genome_start {
+            bytes.extend_from_slice(&line[..line.len() - 1]);
         }
+        genome_start |= line.starts_with(">THREE".as_bytes());
         line.clear();
     }
     Arc::new(bytes)
