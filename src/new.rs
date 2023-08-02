@@ -28,7 +28,6 @@ struct GenomeIter<'a> {
 
 type Genome = Arc<Vec<u8>>;
 type SeqCnts = HashMap<Seq, u32>;
-type SeqCntsSort = Vec<(Seq, u32)>;
 type SeqPcts = Vec<(Seq, f32)>;
 type Thrds = Vec<thread::JoinHandle<(String, SeqCnts)>>;
 
@@ -120,19 +119,14 @@ fn seq_cnts_par(seq_strs: Vec<String>, genome: &Genome) -> Thrds {
     }))
 }
 
-fn sort_by_cnt(seq_cnts: SeqCnts) -> SeqCntsSort {
-    let mut seq_cnts_sort: SeqCntsSort = seq_cnts.into_iter().collect();
-    seq_cnts_sort.sort_by(|(_, l_cnt), (_, r_cnt)| r_cnt.cmp(l_cnt));
-    seq_cnts_sort
-}
-
 fn calc_pcts(seq_cnts: SeqCnts) -> SeqPcts {
-    let tot_seqs: u32 = seq_cnts.values().sum();
-    let mut seq_pcts = Vec::new();
-    for (seq, cnt) in sort_by_cnt(seq_cnts) {
-        seq_pcts.push((seq, cnt as f32 / tot_seqs as f32 * 100_f32));
+    let (mut pcts, tot_seqs) = (Vec::new(), seq_cnts.values().sum::<u32>());
+    let mut seq_cnts_sort: Vec<_> = seq_cnts.into_iter().collect();
+    seq_cnts_sort.sort_by(|(_, l_cnt), (_, r_cnt)| r_cnt.cmp(l_cnt));
+    for (seq, cnt) in seq_cnts_sort {
+        pcts.push((seq, cnt as f32 / tot_seqs as f32 * 100_f32));
     }
-    seq_pcts
+    pcts
 }
 
 fn show_all_seqs_len(seq_len: usize, genome: &Genome) -> String {
