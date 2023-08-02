@@ -148,7 +148,7 @@ fn show_all_seqs_len(seq_len: usize, genome: &Genome) -> String {
 
 fn show_seq_cnts_par(pool: Thrds) -> String {
     let mut str = Vec::default();
-    for thrd in pool {
+    for thrd in pool.into_iter().rev() {
         let (seq_str, seq_cnts) = thrd.join().expect("thread halts");
         let count = seq_cnts.get(&Seq::from(&seq_str)).unwrap_or(&0);
         str.push(format!("{}\t{}", count, seq_str));
