@@ -55,7 +55,7 @@ impl Seq {
 
     fn into(self, seq_len: usize) -> String {
         const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
-        let mut str = String::with_capacity(seq_len);
+        let mut str = String::new();
         for i in (0..seq_len).rev() {
             str.push(NUCLEOTIDES[((self.hash_key >> (2 * i)) & 0b11) as usize]);
         }
@@ -86,7 +86,7 @@ impl<'a> Iterator for GenomeIter<'a> {
 // Private Functions ----------------------------------------------------------
 fn read_genome_file(file_name: &str) -> Genome {
     let mut buf = BufReader::new(File::open(file_name).expect("file found"));
-    let (mut bytes, mut line) = (Vec::default(), Vec::default());
+    let (mut bytes, mut line) = (Vec::new(), Vec::new());
     let mut genome_start = false;
     while let Ok(b) = buf.read_until(b'\n', &mut line) {
         match (genome_start, b, line.starts_with(">THREE".as_bytes())) {
@@ -109,7 +109,7 @@ fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
 }
 
 fn seq_cnt(g_iter: GenomeIter) -> SeqCnts {
-    let mut seq_cnts = SeqCnts::default();
+    let mut seq_cnts = SeqCnts::new();
     for seq in g_iter {
         *seq_cnts.entry(seq).or_insert(0) += 1;
     }
@@ -131,7 +131,7 @@ fn sort_by_cnt(seq_cnts: SeqCnts) -> SeqCntsSort {
 
 fn calc_pcts(seq_cnts: SeqCnts) -> SeqPcts {
     let tot_seqs: u32 = seq_cnts.values().sum();
-    let mut seq_pcts = Vec::default();
+    let mut seq_pcts = Vec::new();
     for (seq, cnt) in sort_by_cnt(seq_cnts) {
         seq_pcts.push((seq, cnt as f32 / tot_seqs as f32 * 100_f32));
     }
@@ -139,7 +139,7 @@ fn calc_pcts(seq_cnts: SeqCnts) -> SeqPcts {
 }
 
 fn show_all_seqs_len(seq_len: usize, genome: &Genome) -> String {
-    let mut str = Vec::default();
+    let mut str = Vec::new();
     for (seq, pct) in calc_pcts(seq_cnt(genome_iter(seq_len, genome))) {
         str.push(format!("{} {:.3}", seq.into(seq_len), pct));
     }
@@ -147,7 +147,7 @@ fn show_all_seqs_len(seq_len: usize, genome: &Genome) -> String {
 }
 
 fn show_seq_cnts_par(pool: Thrds) -> String {
-    let mut str = Vec::default();
+    let mut str = Vec::new();
     for thrd in pool.into_iter().rev() {
         let (seq_str, seq_cnts) = thrd.join().expect("thread halts");
         let count = seq_cnts.get(&Seq::from(&seq_str)).unwrap_or(&0);
