@@ -86,13 +86,12 @@ impl<'a> Iterator for GenomeIter<'a> {
 // Private Functions ----------------------------------------------------------
 fn read_genome_file(file_name: &str) -> Genome {
     let mut buf = BufReader::new(File::open(file_name).expect("file found"));
-    let (mut bytes, mut line) = (Vec::new(), Vec::new());
-    let mut genome_start = false;
+    let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
     while buf.read_until(b'\n', &mut line).expect("read line") > 0 {
-        if genome_start {
-            bytes.extend_from_slice(&line[..line.len() - 1]);
+        match start {
+            true => bytes.extend_from_slice(&line[..line.len() - 1]),
+            _ => start |= line.starts_with(">THREE".as_bytes()),
         }
-        genome_start |= line.starts_with(">THREE".as_bytes());
         line.clear();
     }
     Arc::new(bytes)
