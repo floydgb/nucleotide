@@ -20,8 +20,8 @@ struct Sequence {
 
 struct GenomeIter<'a> {
     seq_len: usize,
-    needle: Sequence,
-    haystack: Iter<'a, u8>,
+    seq: Sequence,
+    genome: Iter<'a, u8>,
 }
 
 type Genome = Arc<Vec<u8>>;
@@ -82,11 +82,11 @@ fn read_file(file_name: &str) -> Genome {
 }
 
 fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
-    let (mut haystack, mut needle) = (genome.iter(), Sequence::default());
-    for byte in haystack.by_ref().take(seq_len - 1) {
-        needle.push(*byte, seq_len);
+    let (mut genome, mut seq) = (genome.iter(), Sequence::default());
+    for byte in genome.by_ref().take(seq_len - 1) {
+        seq.push(*byte, seq_len);
     }
-    #[rustfmt::skip] GenomeIter {seq_len, needle, haystack}
+    #[rustfmt::skip] GenomeIter {seq_len, seq, genome}
 }
 
 fn count_k(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
@@ -140,9 +140,9 @@ impl<'a> Iterator for GenomeIter<'a> {
     type Item = Sequence;
 
     fn next(&mut self) -> Option<Sequence> {
-        self.haystack.next().map(|&byte| {
-            self.needle.push(byte, self.seq_len);
-            self.needle
+        self.genome.next().map(|&byte| {
+            self.seq.push(byte, self.seq_len);
+            self.seq
         })
     }
 }
