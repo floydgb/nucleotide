@@ -68,17 +68,6 @@ fn from_str(seq_str: &str) -> Sequence {
     seq
 }
 
-impl<'a> Iterator for GenomeIter<'a> {
-    type Item = Sequence;
-
-    fn next(&mut self) -> Option<Sequence> {
-        self.haystack.next().map(|&byte| {
-            self.needle.push(byte, self.seq_len);
-            self.needle
-        })
-    }
-}
-
 fn read_file(file_name: &str) -> Genome {
     let mut buf = BufReader::new(File::open(file_name).expect("file found"));
     let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
@@ -144,4 +133,16 @@ fn show(pool: ThreadPool) -> String {
         str.push(format!("{}\t{}", seq_cnts[&from_str(&seq_str)], seq_str));
     }
     str.join("\n")
+}
+
+// Traits ----------------------------------------------------------------------
+impl<'a> Iterator for GenomeIter<'a> {
+    type Item = Sequence;
+
+    fn next(&mut self) -> Option<Sequence> {
+        self.haystack.next().map(|&byte| {
+            self.needle.push(byte, self.seq_len);
+            self.needle
+        })
+    }
 }
