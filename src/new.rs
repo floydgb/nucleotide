@@ -1,5 +1,5 @@
 // The Computer Language Benchmarks Game
-// https://salsa.debian.org/benchmarksgame-team/benchmarksgame/
+// https://programming-language-benchmarks.vercel.app/problem/knucleotide
 //
 // contributed by Greg Floyd
 
