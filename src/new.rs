@@ -135,7 +135,7 @@ fn show(pool: ThreadPool) -> String {
     str.join("\n")
 }
 
-// Traits ----------------------------------------------------------------------
+// Traits ---------------------------------------------------------------------
 impl<'a> Iterator for GenomeIter<'a> {
     type Item = Sequence;
 
