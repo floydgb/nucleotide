@@ -6,7 +6,7 @@ pub mod prev;
 
 // Macros ---------------------------------------------------------------------
 #[macro_export]
-macro_rules! seq {
+macro_rules! str {
      ($($x:expr),*) =>
         (vec![$($x.into()),*].into_iter().rev().collect::<Vec<String>>());
 }

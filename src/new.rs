@@ -9,43 +9,38 @@
 // Imports --------------------------------------------------------------------
 #[rustfmt::skip] 
 use {
-    crate::seq,
-    hashbrown::HashMap,
+    crate::str, hashbrown::HashMap,
     std::{fs::File, io::{BufRead, BufReader}, slice::Iter, sync::Arc, thread}
 };
 
 // Types ----------------------------------------------------------------------
 #[derive(Hash, Default, PartialEq, PartialOrd, Ord, Eq, Clone, Copy)]
-struct Seq {
+struct Sequence {
     hash_key: u64,
 }
 
 struct GenomeIter<'a> {
     seq_len: usize,
-    needle: Seq,
+    needle: Sequence,
     haystack: Iter<'a, u8>,
 }
 
 type Genome = Arc<Vec<u8>>;
-type SeqCnts = HashMap<Seq, u32>;
-type SeqPcts = Vec<(Seq, f32)>;
-type Thrds = Vec<thread::JoinHandle<(String, SeqCnts)>>;
+type ThreadPool = Vec<thread::JoinHandle<(String, HashMap<Sequence, u32>)>>;
 
 // Public Functions -----------------------------------------------------------
 #[rustfmt::skip]
 pub fn run() {
-    let seqs = seq!["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"];
     let genome = read_genome_file("250000_in");
-    let threads = seq_cnts_par(seqs, &genome);
-    println!("{}\n\n{}\n\n{}",
-        show_all_seqs_len(1, &genome),
-        show_all_seqs_len(2, &genome),
-        show_seq_cnts_par(threads)
-    );
+    let seqs = str!["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"];
+    let threads = count_sequences_par(seqs, &genome);
+    println!("{}\n", show_sequences(1, count_sequences(1, &genome)));
+    println!("{}\n", show_sequences(2, count_sequences(2, &genome)));
+    println!("{}", show_sequences_par(threads));
 }
 
 // Private Functions ----------------------------------------------------------
-impl Seq {
+impl Sequence {
     fn push_byte(&mut self, byte: u8, seq_len: usize) {
         self.hash_key <<= 2;
         self.hash_key |= ((byte >> 1) & 0b11) as u64;
@@ -53,16 +48,16 @@ impl Seq {
     }
 
     fn into(self, seq_len: usize) -> String {
-        const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
+        const NUCLEOTIDE: [char; 4] = ['A', 'C', 'T', 'G'];
         let mut str = String::new();
         for i in (0..seq_len).rev() {
-            str.push(NUCLEOTIDES[((self.hash_key >> (2 * i)) & 0b11) as usize]);
+            str.push(NUCLEOTIDE[((self.hash_key >> (2 * i)) & 0b11) as usize]);
         }
         str
     }
 
-    fn from(seq_str: &str) -> Seq {
-        let mut seq = Seq::default();
+    fn from(seq_str: &str) -> Sequence {
+        let mut seq = Sequence::default();
         for byte in seq_str.as_bytes() {
             seq.push_byte(*byte, seq_str.len());
         }
@@ -71,9 +66,9 @@ impl Seq {
 }
 
 impl<'a> Iterator for GenomeIter<'a> {
-    type Item = Seq;
+    type Item = Sequence;
 
-    fn next(&mut self) -> Option<Seq> {
+    fn next(&mut self) -> Option<Sequence> {
         self.haystack.next().map(|&byte| {
             self.needle.push_byte(byte, self.seq_len);
             self.needle
@@ -95,29 +90,29 @@ fn read_genome_file(file_name: &str) -> Genome {
 }
 
 fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
-    let (mut haystack, mut needle) = (genome.iter(), Seq::default());
+    let (mut haystack, mut needle) = (genome.iter(), Sequence::default());
     for byte in haystack.by_ref().take(seq_len - 1) {
         needle.push_byte(*byte, seq_len);
     }
-    #[rustfmt::skip] {GenomeIter {seq_len, needle, haystack}}
+    #[rustfmt::skip] GenomeIter {seq_len, needle, haystack}
 }
 
-fn seq_cnt(g_iter: GenomeIter) -> SeqCnts {
-    let mut seq_cnts = SeqCnts::new();
-    for seq in g_iter {
+fn count_sequences(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
+    let mut seq_cnts = HashMap::<Sequence, u32>::new();
+    for seq in genome_iter(seq_len, genome) {
         *seq_cnts.entry(seq).or_insert(0) += 1;
     }
     seq_cnts
 }
 
-fn seq_cnts_par(seq_strs: Vec<String>, genome: &Genome) -> Thrds {
+fn count_sequences_par(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
     Iterator::collect(seq_strs.into_iter().map(|str| {
         let (seq_len, genome) = (str.len(), Arc::clone(genome));
-        thread::spawn(move || (str, seq_cnt(genome_iter(seq_len, &genome))))
+        thread::spawn(move || (str, count_sequences(seq_len, &genome)))
     }))
 }
 
-fn calc_pcts(seq_cnts: SeqCnts) -> SeqPcts {
+fn calc_percents(seq_cnts: HashMap<Sequence, u32>) -> Vec<(Sequence, f32)> {
     let (mut pcts, tot_seqs) = (Vec::new(), seq_cnts.values().sum::<u32>());
     let mut seq_cnts_sort: Vec<_> = seq_cnts.into_iter().collect();
     seq_cnts_sort.sort_by(|(_, l_cnt), (_, r_cnt)| r_cnt.cmp(l_cnt));
@@ -127,19 +122,19 @@ fn calc_pcts(seq_cnts: SeqCnts) -> SeqPcts {
     pcts
 }
 
-fn show_all_seqs_len(seq_len: usize, genome: &Genome) -> String {
+fn show_sequences(seq_len: usize, seq_cnts: HashMap<Sequence, u32>) -> String {
     let mut str = Vec::new();
-    for (seq, pct) in calc_pcts(seq_cnt(genome_iter(seq_len, genome))) {
+    for (seq, pct) in calc_percents(seq_cnts) {
         str.push(format!("{} {:.3}", seq.into(seq_len), pct));
     }
     str.join("\n")
 }
 
-fn show_seq_cnts_par(pool: Thrds) -> String {
+fn show_sequences_par(pool: ThreadPool) -> String {
     let mut str = Vec::new();
     for thrd in pool.into_iter().rev() {
         let (seq_str, seq_cnts) = thrd.join().expect("thread halts");
-        let count = seq_cnts.get(&Seq::from(&seq_str)).unwrap_or(&0);
+        let count = seq_cnts.get(&Sequence::from(&seq_str)).unwrap_or(&0);
         str.push(format!("{}\t{}", count, seq_str));
     }
     str.join("\n")
