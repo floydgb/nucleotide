@@ -56,8 +56,6 @@ impl<'a> Iterator for GenomeIter<'a> {
 
 // Private Functions ----------------------------------------------------------
 impl Sequence {
-    const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
-
     fn push(&mut self, byte: u8, seq_len: usize) {
         self.hash_key <<= 2;
         self.hash_key |= ((byte >> 1) & 0b11) as u64;
@@ -65,16 +63,16 @@ impl Sequence {
     }
 
     fn to_str(self, seq_len: usize) -> String {
-        let mut str = String::default();
+        let (mut str, nucleotides) = (String::default(), ['A', 'C', 'T', 'G']);
         for i in (0..seq_len).rev() {
             let index = ((self.hash_key >> (2 * i)) & 0b11) as usize;
-            str.push(Self::NUCLEOTIDES[index]);
+            str.push(nucleotides[index]);
         }
         str
     }
 
-    fn from_str(seq_str: &str) -> Sequence {
-        let mut seq = Sequence::default();
+    fn from_str(seq_str: &str) -> Self {
+        let mut seq = Self::default();
         for byte in seq_str.as_bytes() {
             seq.push(*byte, seq_str.len());
         }
