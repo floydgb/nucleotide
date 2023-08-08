@@ -42,6 +42,18 @@ pub fn run() {
     println!("{}", show(seqs_cnt));
 }
 
+// Traits ---------------------------------------------------------------------
+impl<'a> Iterator for GenomeIter<'a> {
+    type Item = Sequence;
+
+    fn next(&mut self) -> Option<Sequence> {
+        self.genome.next().map(|&byte| {
+            self.seq.push(byte, self.seq_len);
+            self.seq
+        })
+    }
+}
+
 // Private Functions ----------------------------------------------------------
 impl Sequence {
     const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
@@ -70,6 +82,14 @@ impl Sequence {
     }
 }
 
+fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
+    GenomeIter {
+        seq_len,
+        seq: Sequence::default(),
+        genome: genome.iter(),
+    }
+}
+
 fn read_file(file_name: &str) -> Genome {
     let mut buf = BufReader::new(File::open(file_name).expect("ok"));
     let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
@@ -83,12 +103,11 @@ fn read_file(file_name: &str) -> Genome {
     Arc::new(bytes)
 }
 
-fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
-    GenomeIter {
-        seq_len,
-        seq: Sequence::default(),
-        genome: genome.iter(),
-    }
+fn count(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
+    Iterator::collect(seq_strs.into_iter().map(|str| {
+        let (seq_len, genome) = (str.len(), Arc::clone(genome));
+        thread::spawn(move || (str, count_k(seq_len, &genome)))
+    }))
 }
 
 fn count_k(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
@@ -97,13 +116,6 @@ fn count_k(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
         *seq_cnts.entry(seq).or_insert(0) += 1;
     }
     seq_cnts
-}
-
-fn count(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
-    Iterator::collect(seq_strs.into_iter().map(|str| {
-        let (seq_len, genome) = (str.len(), Arc::clone(genome));
-        thread::spawn(move || (str, count_k(seq_len, &genome)))
-    }))
 }
 
 fn calc_percents(seq_cnts: HashMap<Sequence, u32>) -> Vec<(Sequence, f32)> {
@@ -121,14 +133,6 @@ fn sort_by_count(seq_cnts: HashMap<Sequence, u32>) -> Vec<(Sequence, u32)> {
     seq_cnts_sort
 }
 
-fn show_k(seq_len: usize, seq_cnts: HashMap<Sequence, u32>) -> String {
-    let mut str = Vec::default();
-    for (seq, pct) in calc_percents(seq_cnts) {
-        str.push(format!("{} {:.3}", seq.to_str(seq_len), pct));
-    }
-    str.join("\n")
-}
-
 fn show(pool: ThreadPool) -> String {
     let mut str = Vec::default();
     for thrd in pool.into_iter().rev() {
@@ -139,14 +143,10 @@ fn show(pool: ThreadPool) -> String {
     str.join("\n")
 }
 
-// Traits ---------------------------------------------------------------------
-impl<'a> Iterator for GenomeIter<'a> {
-    type Item = Sequence;
-
-    fn next(&mut self) -> Option<Sequence> {
-        self.genome.next().map(|&byte| {
-            self.seq.push(byte, self.seq_len);
-            self.seq
-        })
+fn show_k(seq_len: usize, seq_cnts: HashMap<Sequence, u32>) -> String {
+    let mut str = Vec::default();
+    for (seq, pct) in calc_percents(seq_cnts) {
+        str.push(format!("{} {:.3}", seq.to_str(seq_len), pct));
     }
+    str.join("\n")
 }
