@@ -53,7 +53,7 @@ impl Sequence {
     }
 
     fn to_str(self, seq_len: usize) -> String {
-        let mut str = String::new();
+        let mut str = String::default();
         for i in (0..seq_len).rev() {
             let index = ((self.hash_key >> (2 * i)) & 0b11) as usize;
             str.push(Self::NUCLEOTIDES[index]);
@@ -84,12 +84,15 @@ fn read_file(file_name: &str) -> Genome {
 }
 
 fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
-    let (genome, seq) = (genome.iter(), Sequence::default());
-    #[rustfmt::skip] GenomeIter {seq_len, seq, genome}
+    GenomeIter {
+        seq_len,
+        seq: Sequence::default(),
+        genome: genome.iter(),
+    }
 }
 
 fn count_k(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
-    let mut seq_cnts = HashMap::<Sequence, u32>::new();
+    let mut seq_cnts = HashMap::<Sequence, u32>::default();
     for seq in genome_iter(seq_len, genome) {
         *seq_cnts.entry(seq).or_insert(0) += 1;
     }
@@ -106,7 +109,8 @@ fn count(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
 fn calc_percents(seq_cnts: HashMap<Sequence, u32>) -> Vec<(Sequence, f32)> {
     let (mut pcts, tot_seqs) = (Vec::new(), seq_cnts.values().sum::<u32>());
     for (seq, cnt) in sort_by_count(seq_cnts) {
-        pcts.push((seq, cnt as f32 / tot_seqs as f32 * 100_f32));
+        let percent = cnt as f32 / tot_seqs as f32 * 100_f32;
+        pcts.push((seq, percent));
     }
     pcts
 }
@@ -118,7 +122,7 @@ fn sort_by_count(seq_cnts: HashMap<Sequence, u32>) -> Vec<(Sequence, u32)> {
 }
 
 fn show_k(seq_len: usize, seq_cnts: HashMap<Sequence, u32>) -> String {
-    let mut str = Vec::new();
+    let mut str = Vec::default();
     for (seq, pct) in calc_percents(seq_cnts) {
         str.push(format!("{} {:.3}", seq.to_str(seq_len), pct));
     }
@@ -126,7 +130,7 @@ fn show_k(seq_len: usize, seq_cnts: HashMap<Sequence, u32>) -> String {
 }
 
 fn show(pool: ThreadPool) -> String {
-    let mut str = Vec::new();
+    let mut str = Vec::default();
     for thrd in pool.into_iter().rev() {
         let (seq_str, seq_cnts) = thrd.join().expect("thread halts");
         let seq = Sequence::from_str(&seq_str);
