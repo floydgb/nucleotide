@@ -1,7 +1,7 @@
 #![feature(stmt_expr_attributes)]
 
 // Exports --------------------------------------------------------------------
-pub mod new;
+pub mod knucleotide;
 pub mod prev;
 
 // Macros ---------------------------------------------------------------------

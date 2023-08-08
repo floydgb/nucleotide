@@ -1,6 +1,6 @@
-use nucleotide::{new, prev};
+use nucleotide::{knucleotide, prev};
 
 fn main() {
     prev::run();
-    new::run();
+    knucleotide::run();
 }

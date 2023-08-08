@@ -2,7 +2,7 @@
 extern crate test;
 
 use {
-    nucleotide::{new, prev},
+    nucleotide::{knucleotide, prev},
     test::Bencher,
 };
 
@@ -12,7 +12,7 @@ mod bench {
 
     #[bench]
     fn bench_new(b: &mut Bencher) {
-        b.iter(|| new::run());
+        b.iter(|| knucleotide::run());
     }
 
     #[bench]
