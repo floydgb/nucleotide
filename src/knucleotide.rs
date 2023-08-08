@@ -9,7 +9,7 @@
 #[rustfmt::skip] 
 use {
     crate::str, hashbrown::HashMap,
-    std::{fs::File, io::{BufRead, BufReader}, slice::Iter, sync::Arc, thread}
+    std::{fs::File, io::{BufRead, BufReader}, slice::Iter, thread}
 };
 
 // Types ----------------------------------------------------------------------
@@ -24,8 +24,8 @@ struct GenomeIter<'a> {
     genome: Iter<'a, u8>,
 }
 
-type Genome = Arc<Vec<u8>>;
-type ThreadPool = Vec<thread::JoinHandle<(String, HashMap<Sequence, u32>)>>;
+type Genome = Vec<u8>;
+type ThreadPool = Vec<thread::JoinHandle<(String, u32)>>;
 
 // Public Functions -----------------------------------------------------------
 #[rustfmt::skip]
@@ -33,7 +33,7 @@ pub fn run() {
     let genome = read_file("250000_in");
     let seqs = str!["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"];
 
-    let seqs_cnt = count(seqs, &genome);
+    let seqs_cnt = count_par(seqs, &genome);
     let k1_seqs_pct = count_k(1, &genome);
     let k2_seqs_pct = count_k(2, &genome);
 
@@ -100,14 +100,24 @@ fn read_file(file_name: &str) -> Genome {
         }
         line.clear();
     }
-    Arc::new(bytes)
+    bytes
 }
 
-fn count(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
+fn count_par(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
     Iterator::collect(seq_strs.into_iter().map(|str| {
-        let (seq_len, genome) = (str.len(), Arc::clone(genome));
-        thread::spawn(move || (str, count_k(seq_len, &genome)))
+        let genome = Vec::clone(genome);
+        thread::spawn(move || count(&str, str.len(), &genome))
     }))
+}
+
+fn count(seq_str: &str, seq_len: usize, genome: &Genome) -> (String, u32) {
+    let (target_seq, mut seq_cnt) = (Sequence::from_str(seq_str), 0);
+    for seq in genome_iter(seq_len, genome) {
+        if seq == target_seq {
+            seq_cnt += 1
+        }
+    }
+    (seq_str.into(), seq_cnt)
 }
 
 fn count_k(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
@@ -136,9 +146,8 @@ fn sort_by_count(seq_cnts: HashMap<Sequence, u32>) -> Vec<(Sequence, u32)> {
 fn show(pool: ThreadPool) -> String {
     let mut str = Vec::default();
     for thrd in pool.into_iter().rev() {
-        let (seq_str, seq_cnts) = thrd.join().expect("thread halts");
-        let seq = Sequence::from_str(&seq_str);
-        str.push(format!("{}\t{}", seq_cnts[&seq], seq_str));
+        let (seq_str, seq_cnt) = thrd.join().expect("thread halts");
+        str.push(format!("{}\t{}", seq_cnt, seq_str));
     }
     str.join("\n")
 }
