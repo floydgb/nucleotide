@@ -9,7 +9,7 @@
 #[rustfmt::skip] 
 use {
     crate::str, hashbrown::HashMap,
-    std::{fs::File, io::{BufRead, BufReader}, slice::Iter, thread}
+    std::{fs::File, io::{BufRead, BufReader}, slice, thread}
 };
 
 // Types ----------------------------------------------------------------------
@@ -21,7 +21,7 @@ struct Sequence {
 struct KGenomeIter<'a> {
     seq_len: usize,
     cur_seq: Sequence,
-    genome_iter: Iter<'a, u8>,
+    genome_iter: slice::Iter<'a, u8>,
 }
 
 type Genome = Vec<u8>;
