@@ -84,10 +84,7 @@ fn read_file(file_name: &str) -> Genome {
 }
 
 fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
-    let (mut genome, mut seq) = (genome.iter(), Sequence::default());
-    for byte in genome.by_ref().take(seq_len - 1) {
-        seq.push(*byte, seq_len);
-    }
+    let (genome, seq) = (genome.iter(), Sequence::default());
     #[rustfmt::skip] GenomeIter {seq_len, seq, genome}
 }
 
