@@ -13,15 +13,15 @@ use {
 };
 
 // Types ----------------------------------------------------------------------
-#[derive(Hash, Default, PartialEq, PartialOrd, Ord, Eq, Clone, Copy)]
+#[derive(Hash, Default, PartialEq, Eq, Clone, Copy)]
 struct Sequence {
     hash_key: u64,
 }
 
-struct GenomeIter<'a> {
+struct KGenomeIter<'a> {
     seq_len: usize,
-    seq: Sequence,
-    genome: Iter<'a, u8>,
+    cur_seq: Sequence,
+    genome_iter: Iter<'a, u8>,
 }
 
 type Genome = Vec<u8>;
@@ -30,7 +30,7 @@ type ThreadPool = Vec<thread::JoinHandle<(String, u32)>>;
 // Public Functions -----------------------------------------------------------
 #[rustfmt::skip]
 pub fn run() {
-    let genome = read_file("250000_in");
+    let genome = open_file("250000_in");
     let seqs = str!["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"];
 
     let seqs_cnt = count_par(seqs, &genome);
@@ -43,13 +43,13 @@ pub fn run() {
 }
 
 // Traits ---------------------------------------------------------------------
-impl<'a> Iterator for GenomeIter<'a> {
+impl<'a> Iterator for KGenomeIter<'a> {
     type Item = Sequence;
 
     fn next(&mut self) -> Option<Sequence> {
-        self.genome.next().map(|&byte| {
-            self.seq.push(byte, self.seq_len);
-            self.seq
+        self.genome_iter.next().map(|&byte| {
+            self.cur_seq.push(byte, self.seq_len);
+            self.cur_seq
         })
     }
 }
@@ -80,20 +80,27 @@ impl Sequence {
     }
 }
 
-fn genome_iter(seq_len: usize, genome: &Genome) -> GenomeIter {
-    GenomeIter {
+fn k_genome_iter(seq_len: usize, genome: &Genome) -> KGenomeIter {
+    KGenomeIter {
         seq_len,
-        seq: Sequence::default(),
-        genome: genome.iter(),
+        cur_seq: Sequence::default(),
+        genome_iter: genome.iter(),
     }
 }
 
-fn read_file(file_name: &str) -> Genome {
-    let mut buf = BufReader::new(File::open(file_name).expect("ok"));
+fn open_file(file_name: &str) -> Genome {
+    match File::open(file_name) {
+        Ok(file) => read_file(BufReader::new(file)),
+        _ => unreachable!("file not found"),
+    }
+}
+
+fn read_file(mut buf: BufReader<File>) -> Genome {
     let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
-    while buf.read_until(b'\n', &mut line).expect("ok") > 0 {
-        match start {
-            true => bytes.extend_from_slice(&line[..line.len() - 1]),
+    while let Ok(bytes_read) = buf.read_until(b'\n', &mut line) {
+        match bytes_read {
+            0 => break,
+            _ if start => bytes.extend_from_slice(&line[..line.len() - 1]),
             _ => start |= line.starts_with(">THREE".as_bytes()),
         }
         line.clear();
@@ -110,7 +117,7 @@ fn count_par(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
 
 fn count(seq_str: &str, seq_len: usize, genome: &Genome) -> (String, u32) {
     let (target_seq, mut seq_cnt) = (Sequence::from_str(seq_str), 0);
-    for seq in genome_iter(seq_len, genome) {
+    for seq in k_genome_iter(seq_len, genome) {
         if seq == target_seq {
             seq_cnt += 1
         }
@@ -120,7 +127,7 @@ fn count(seq_str: &str, seq_len: usize, genome: &Genome) -> (String, u32) {
 
 fn count_k(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
     let mut seq_cnts = HashMap::<Sequence, u32>::default();
-    for seq in genome_iter(seq_len, genome) {
+    for seq in k_genome_iter(seq_len, genome) {
         *seq_cnts.entry(seq).or_insert(0) += 1;
     }
     seq_cnts
