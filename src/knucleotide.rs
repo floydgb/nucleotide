@@ -44,6 +44,8 @@ pub fn run() {
 
 // Private Functions ----------------------------------------------------------
 impl Sequence {
+    const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
+
     fn push(&mut self, byte: u8, seq_len: usize) {
         self.hash_key <<= 2;
         self.hash_key |= ((byte >> 1) & 0b11) as u64;
@@ -51,27 +53,27 @@ impl Sequence {
     }
 
     fn to_str(self, seq_len: usize) -> String {
-        const NUCLEOTIDE: [char; 4] = ['A', 'C', 'T', 'G'];
         let mut str = String::new();
         for i in (0..seq_len).rev() {
-            str.push(NUCLEOTIDE[((self.hash_key >> (2 * i)) & 0b11) as usize]);
+            let index = ((self.hash_key >> (2 * i)) & 0b11) as usize;
+            str.push(Self::NUCLEOTIDES[index]);
         }
         str
     }
-}
 
-fn from_str(seq_str: &str) -> Sequence {
-    let mut seq = Sequence::default();
-    for byte in seq_str.as_bytes() {
-        seq.push(*byte, seq_str.len());
+    fn from_str(seq_str: &str) -> Sequence {
+        let mut seq = Sequence::default();
+        for byte in seq_str.as_bytes() {
+            seq.push(*byte, seq_str.len());
+        }
+        seq
     }
-    seq
 }
 
 fn read_file(file_name: &str) -> Genome {
-    let mut buf = BufReader::new(File::open(file_name).expect("file found"));
+    let mut buf = BufReader::new(File::open(file_name).expect("ok"));
     let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
-    while buf.read_until(b'\n', &mut line).expect("read line") > 0 {
+    while buf.read_until(b'\n', &mut line).expect("ok") > 0 {
         match start {
             true => bytes.extend_from_slice(&line[..line.len() - 1]),
             _ => start |= line.starts_with(">THREE".as_bytes()),
@@ -130,7 +132,8 @@ fn show(pool: ThreadPool) -> String {
     let mut str = Vec::new();
     for thrd in pool.into_iter().rev() {
         let (seq_str, seq_cnts) = thrd.join().expect("thread halts");
-        str.push(format!("{}\t{}", seq_cnts[&from_str(&seq_str)], seq_str));
+        let seq = Sequence::from_str(&seq_str);
+        str.push(format!("{}\t{}", seq_cnts[&seq], seq_str));
     }
     str.join("\n")
 }
