@@ -18,7 +18,7 @@ struct Sequence {
     hash_key: u64,
 }
 
-struct KGenomeIter<'a> {
+struct KNucleotideIter<'a> {
     seq_len: usize,
     cur_seq: Sequence,
     genome_iter: slice::Iter<'a, u8>,
@@ -43,7 +43,7 @@ pub fn run() {
 }
 
 // Traits ---------------------------------------------------------------------
-impl<'a> Iterator for KGenomeIter<'a> {
+impl<'a> Iterator for KNucleotideIter<'a> {
     type Item = Sequence;
 
     fn next(&mut self) -> Option<Sequence> {
@@ -80,8 +80,8 @@ impl Sequence {
     }
 }
 
-fn k_genome_iter(seq_len: usize, genome: &Genome) -> KGenomeIter {
-    KGenomeIter {
+fn k_nucleotide_iter(seq_len: usize, genome: &Genome) -> KNucleotideIter {
+    KNucleotideIter {
         seq_len,
         cur_seq: Sequence::default(),
         genome_iter: genome.iter(),
@@ -117,7 +117,7 @@ fn count_par(seq_strs: Vec<String>, genome: &Genome) -> ThreadPool {
 
 fn count(seq_str: &str, seq_len: usize, genome: &Genome) -> (String, u32) {
     let (target_seq, mut seq_cnt) = (Sequence::from_str(seq_str), 0);
-    for seq in k_genome_iter(seq_len, genome) {
+    for seq in k_nucleotide_iter(seq_len, genome) {
         if seq == target_seq {
             seq_cnt += 1
         }
@@ -127,7 +127,7 @@ fn count(seq_str: &str, seq_len: usize, genome: &Genome) -> (String, u32) {
 
 fn count_k(seq_len: usize, genome: &Genome) -> HashMap<Sequence, u32> {
     let mut seq_cnts = HashMap::<Sequence, u32>::default();
-    for seq in k_genome_iter(seq_len, genome) {
+    for seq in k_nucleotide_iter(seq_len, genome) {
         *seq_cnts.entry(seq).or_insert(0) += 1;
     }
     seq_cnts
