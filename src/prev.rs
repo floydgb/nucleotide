@@ -128,7 +128,7 @@ fn read_input() -> Vec<u8> {
     //     .and_then(|s| s.into_string().ok())
     //     .unwrap_or("250000_in".into());
 
-    let file = std::fs::File::open("250000_in").unwrap();
+    let file = std::fs::File::open("2500000_in").unwrap();
     let mut r = BufReader::new(file);
     let key = ">THREE";
     let mut res = Vec::with_capacity(65536);
