@@ -64,9 +64,9 @@ impl Sequence {
 
     fn to_str(self, seq_len: usize) -> String {
         let (mut str, nucleotides) = (String::default(), ['A', 'C', 'T', 'G']);
-        for i in (0..seq_len).rev() {
-            let index = ((self.hash_key >> (2 * i)) & 0b11) as usize;
-            str.push(nucleotides[index]);
+        for seq_i in (0..seq_len).rev() {
+            let str_i = ((self.hash_key >> (2 * seq_i)) & 0b11) as usize;
+            str.push(nucleotides[str_i]);
         }
         str
     }
