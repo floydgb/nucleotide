@@ -29,13 +29,13 @@ pub fn run() {
     let genome = read_file("2500000_in");
     let seqs = str!["GGT","GGTA","GGTATT","GGTATTTTAATT","GGTATTTTAATTTATAGT"];
 
-    let seqs_cnt = par_count(seqs, &genome);
+    let seqs_cnt = start_counts(seqs, &genome);
     let k1_seqs_pct = par_count_k(1, &genome);
     let k2_seqs_pct = par_count_k(2, &genome);
 
     println!("{}\n", show_k(1, k1_seqs_pct));
     println!("{}\n", show_k(2, k2_seqs_pct));
-    println!("{}", show(seqs_cnt));
+    println!("{}", show_counts(seqs_cnt));
 }
 
 // Traits ---------------------------------------------------------------------
@@ -98,15 +98,19 @@ fn read_file(file_name: &str) -> Vec<u8> {
     bytes
 }
 
-fn par_count(seq_strs: Vec<String>, genome: &[u8]) -> ThreadPool {
-    let genome_arc = Arc::new(genome.to_vec());
-    ParallelIterator::collect(seq_strs.into_par_iter().map(|str| {
-        let genome_arc = Arc::clone(&genome_arc);
-        thread::spawn(move || count(&str, str.len(), &genome_arc))
-    }))
+fn start_counts(seq_strs: Vec<String>, genome: &[u8]) -> ThreadPool {
+    let mut pool = Vec::with_capacity(seq_strs.len());
+    let genome = Arc::new(genome.to_vec());
+    for seq_str in seq_strs {
+        let genome = Arc::clone(&genome);
+        pool.push(thread::spawn(move || {
+            par_count(&seq_str, seq_str.len(), &genome)
+        }));
+    }
+    pool
 }
 
-fn count(seq_str: &str, seq_len: usize, genome: &[u8]) -> (String, usize) {
+fn par_count(seq_str: &str, seq_len: usize, genome: &[u8]) -> (String, usize) {
     let count = chunks(genome.len() / 64, seq_len - 1, genome)
         .into_par_iter()
         .map(|chunk| count_chunk(Seq::from_str(seq_str), seq_len, chunk))
@@ -164,7 +168,7 @@ fn sort_by_count(seq_cnts: HashMap<Seq, u32>) -> Vec<(Seq, u32)> {
     seq_cnts_sort
 }
 
-fn show(pool: ThreadPool) -> String {
+fn show_counts(pool: ThreadPool) -> String {
     let mut str = Vec::with_capacity(pool.len());
     for thrd in pool.into_iter().rev() {
         let (seq_str, seq_cnt) = thrd.join().expect("thread halts");

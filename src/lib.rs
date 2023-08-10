@@ -1,5 +1,3 @@
-#![feature(stmt_expr_attributes)]
-
 // Exports --------------------------------------------------------------------
 pub mod knucleotide;
 pub mod prev;
