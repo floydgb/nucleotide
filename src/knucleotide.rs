@@ -156,11 +156,10 @@ fn merge(mut a: HashMap<Seq, u32>, b: HashMap<Seq, u32>) -> HashMap<Seq, u32> {
 }
 
 fn calc_percents(seq_cnts: HashMap<Seq, u32>) -> Vec<(Seq, f32)> {
-    let mut pcts = Vec::with_capacity(seq_cnts.len());
     let tot_seqs: u32 = seq_cnts.values().sum();
+    let mut pcts = Vec::with_capacity(seq_cnts.len());
     for (seq, cnt) in sort_by_count(seq_cnts) {
-        let percent = cnt as f32 / tot_seqs as f32 * 100 as f32;
-        pcts.push((seq, percent));
+        pcts.push((seq, (cnt * 100) as f32 / tot_seqs as f32));
     }
     pcts
 }
