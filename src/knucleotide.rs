@@ -6,8 +6,13 @@
 // Imports --------------------------------------------------------------------
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::io::{BufRead, BufReader};
-use std::{fs::File, slice, sync::Arc, thread};
+use std::{fs::File, slice, sync::Arc, thread, thread::spawn};
 use {crate::str, hashbrown::HashMap};
+
+// Constants ------------------------------------------------------------------
+const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
+const NUM_CHUNKS: usize = 64;
+const FILE_START: &[u8] = ">THREE".as_bytes();
 
 // Types ----------------------------------------------------------------------
 #[derive(Hash, Default, PartialEq, Eq, Clone, Copy)]
@@ -52,17 +57,15 @@ impl<'a> Iterator for KNucleotides<'a> {
 // Private Functions ----------------------------------------------------------
 impl Seq {
     fn push(&mut self, byte: u8, seq_len: usize) {
-        self.hash_key <<= 2;
-        self.hash_key |= ((byte >> 1) & 0b11) as u64;
-        self.hash_key &= (1u64 << (2 * seq_len)) - 1;
+        self.hash_key =
+            ((self.hash_key << 2) | ((byte >> 1) & 0b11) as u64) & ((1u64 << (2 * seq_len)) - 1);
     }
 
     fn to_str(self, seq_len: usize) -> String {
-        let nucleotides = ['A', 'C', 'T', 'G'];
         let mut str = String::with_capacity(seq_len);
         for seq_i in (0..seq_len).rev() {
             let str_i = ((self.hash_key >> (2 * seq_i)) & 0b11) as usize;
-            str.push(nucleotides[str_i]);
+            str.push(NUCLEOTIDES[str_i]);
         }
         str
     }
@@ -84,46 +87,35 @@ fn k_nucleotides(seq_len: usize, genome: &[u8]) -> KNucleotides {
     }
 }
 
-fn read_file(file_name: &str) -> Vec<u8> {
+fn read_file(file_name: &str) -> Arc<Vec<u8>> {
     let mut buf = BufReader::new(File::open(file_name).expect("ok"));
     let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
     while let Ok(bytes_read) = buf.read_until(b'\n', &mut line) {
         match bytes_read {
             0 => break,
             _ if start => bytes.extend(&line[..line.len() - 1]),
-            _ => start |= line.starts_with(">THREE".as_bytes()),
+            _ => start |= line.starts_with(FILE_START),
         }
         line.clear();
     }
-    bytes
+    Arc::new(bytes)
 }
 
-fn start_counts(seq_strs: Vec<String>, genome: &[u8]) -> ThreadPool {
+fn start_counts(seq_strs: Vec<String>, genome: &Arc<Vec<u8>>) -> ThreadPool {
     let mut pool = Vec::with_capacity(seq_strs.len());
-    let genome = Arc::new(genome.to_vec());
     for seq_str in seq_strs {
-        let genome = Arc::clone(&genome);
-        pool.push(thread::spawn(move || {
-            par_count(&seq_str, seq_str.len(), &genome)
-        }));
+        let arc = Arc::clone(&genome);
+        pool.push(spawn(move || par_count(&seq_str, seq_str.len(), &arc)));
     }
     pool
 }
 
 fn par_count(seq_str: &str, seq_len: usize, genome: &[u8]) -> (String, usize) {
-    let count = chunks(genome.len() / 64, seq_len - 1, genome)
+    let count = chunks(genome.len() / NUM_CHUNKS, seq_len - 1, genome)
         .into_par_iter()
         .map(|chunk| count(Seq::from_str(seq_str), seq_len, chunk))
         .sum();
     (seq_str.into(), count)
-}
-
-fn count_k(seq_len: usize, chunk: &[u8]) -> HashMap<Seq, u32> {
-    let mut seq_cnts = HashMap::<Seq, u32>::with_capacity(32);
-    for seq in k_nucleotides(seq_len, chunk).into_iter() {
-        *seq_cnts.entry(seq).or_insert(0) += 1;
-    }
-    seq_cnts
 }
 
 fn chunks(chunk_size: usize, overlap: usize, bytes: &[u8]) -> Vec<&[u8]> {
@@ -133,18 +125,27 @@ fn chunks(chunk_size: usize, overlap: usize, bytes: &[u8]) -> Vec<&[u8]> {
         .collect()
 }
 
-fn count(target_seq: Seq, seq_len: usize, chunk: &[u8]) -> usize {
-    k_nucleotides(seq_len, chunk)
+fn count(target_seq: Seq, seq_len: usize, genome: &[u8]) -> usize {
+    k_nucleotides(seq_len, genome)
         .into_iter()
         .filter(|&seq| seq == target_seq)
         .count()
 }
 
 fn par_count_k(seq_len: usize, genome: &[u8]) -> HashMap<Seq, u32> {
-    chunks(genome.len() / 64, seq_len - 1, genome)
+    chunks(genome.len() / NUM_CHUNKS, seq_len - 1, genome)
         .into_par_iter()
         .map(|chunk| count_k(seq_len, chunk))
         .reduce(HashMap::default, merge)
+}
+
+fn count_k(seq_len: usize, genome: &[u8]) -> HashMap<Seq, u32> {
+    let capacity = NUCLEOTIDES.len().pow(seq_len as u32);
+    let mut seq_cnts = HashMap::<Seq, u32>::with_capacity(capacity);
+    for seq in k_nucleotides(seq_len, genome).into_iter() {
+        *seq_cnts.entry(seq).or_insert(0) += 1;
+    }
+    seq_cnts
 }
 
 fn merge(mut a: HashMap<Seq, u32>, b: HashMap<Seq, u32>) -> HashMap<Seq, u32> {
@@ -155,9 +156,10 @@ fn merge(mut a: HashMap<Seq, u32>, b: HashMap<Seq, u32>) -> HashMap<Seq, u32> {
 }
 
 fn calc_percents(seq_cnts: HashMap<Seq, u32>) -> Vec<(Seq, f32)> {
-    let (mut pcts, tot_seqs) = (Vec::new(), seq_cnts.values().sum::<u32>());
+    let mut pcts = Vec::with_capacity(seq_cnts.len());
+    let tot_seqs: u32 = seq_cnts.values().sum();
     for (seq, cnt) in sort_by_count(seq_cnts) {
-        let percent = cnt as f32 / tot_seqs as f32 * 100_f32;
+        let percent = cnt as f32 / tot_seqs as f32 * 100 as f32;
         pcts.push((seq, percent));
     }
     pcts
