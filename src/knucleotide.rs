@@ -6,7 +6,7 @@
 // Imports --------------------------------------------------------------------
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::io::{BufRead, BufReader};
-use std::{cmp::min, fs::File, slice, sync::Arc, thread};
+use std::{fs::File, slice, sync::Arc, thread};
 use {crate::str, hashbrown::HashMap};
 
 // Types ----------------------------------------------------------------------
@@ -113,28 +113,29 @@ fn start_counts(seq_strs: Vec<String>, genome: &[u8]) -> ThreadPool {
 fn par_count(seq_str: &str, seq_len: usize, genome: &[u8]) -> (String, usize) {
     let count = chunks(genome.len() / 64, seq_len - 1, genome)
         .into_par_iter()
-        .map(|chunk| count_chunk(Seq::from_str(seq_str), seq_len, chunk))
+        .map(|chunk| count(Seq::from_str(seq_str), seq_len, chunk))
         .sum();
     (seq_str.into(), count)
 }
 
 fn count_k(seq_len: usize, chunk: &[u8]) -> HashMap<Seq, u32> {
     let mut seq_cnts = HashMap::<Seq, u32>::with_capacity(32);
-    for seq in k_nucleotides(seq_len, chunk) {
+    for seq in k_nucleotides(seq_len, chunk).into_iter() {
         *seq_cnts.entry(seq).or_insert(0) += 1;
     }
     seq_cnts
 }
 
-fn chunks(chunk_size: usize, overlap: usize, genome: &[u8]) -> Vec<&[u8]> {
-    (0..genome.len())
-        .step_by(chunk_size - overlap)
-        .map(|start| &genome[start..min(start + chunk_size, genome.len())])
+fn chunks(chunk_size: usize, overlap: usize, bytes: &[u8]) -> Vec<&[u8]> {
+    bytes
+        .windows(chunk_size + overlap)
+        .step_by(chunk_size)
         .collect()
 }
 
-fn count_chunk(target_seq: Seq, seq_len: usize, chunk: &[u8]) -> usize {
+fn count(target_seq: Seq, seq_len: usize, chunk: &[u8]) -> usize {
     k_nucleotides(seq_len, chunk)
+        .into_iter()
         .filter(|&seq| seq == target_seq)
         .count()
 }
