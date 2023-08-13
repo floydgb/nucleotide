@@ -12,7 +12,8 @@ use {crate::str, hashbrown::HashMap};
 // Constants ------------------------------------------------------------------
 const NUCLEOTIDES: [char; 4] = ['A', 'C', 'T', 'G'];
 const NUM_CHUNKS: usize = 64;
-const FILE_START: &[u8] = ">THREE".as_bytes();
+const START: &[u8] = ">TH".as_bytes();
+const FILE: usize = 15000000;
 
 // Types ----------------------------------------------------------------------
 #[derive(Hash, Default, PartialEq, Eq, Clone, Copy)]
@@ -87,18 +88,17 @@ fn k_nucleotides(seq_len: usize, genome: &[u8]) -> KNucleotides {
     }
 }
 
-fn read_file(file_name: &str) -> Arc<Vec<u8>> {
-    let mut buf = BufReader::new(File::open(file_name).expect("ok"));
-    let (mut bytes, mut line, mut start) = (Vec::new(), Vec::new(), false);
-    while let Ok(bytes_read) = buf.read_until(b'\n', &mut line) {
-        match bytes_read {
-            0 => break,
-            _ if start => bytes.extend(&line[..line.len() - 1]),
-            _ => start |= line.starts_with(FILE_START),
+fn read_file(path: &str) -> Arc<Vec<u8>> {
+    let (mut read, mut r) = (false, BufReader::new(File::open(path).unwrap()));
+    let (mut buf, mut l) = (Vec::with_capacity(FILE), Vec::with_capacity(64));
+    while r.read_until(b'\n', &mut l).unwrap_or(0) > 0 {
+        match read {
+            true => buf.extend_from_slice(&l[..l.len() - 1]),
+            false => read = l.starts_with(START),
         }
-        line.clear();
+        l.clear();
     }
-    Arc::new(bytes)
+    Arc::new(buf)
 }
 
 fn start_counts(seq_strs: Vec<String>, genome: &Arc<Vec<u8>>) -> ThreadPool {
