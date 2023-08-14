@@ -159,7 +159,7 @@ fn read_input() -> Vec<u8> {
     res
 }
 
-pub fn run() {
+pub fn main() {
     let occs = vec![
         Occ("GGTATTTTAATTTATAGT"),
         Occ("GGTATTTTAATT"),

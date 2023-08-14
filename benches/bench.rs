@@ -12,11 +12,11 @@ mod bench {
 
     #[bench]
     fn bench_new(b: &mut Bencher) {
-        b.iter(|| knucleotide::run());
+        b.iter(|| knucleotide::main());
     }
 
     #[bench]
     fn bench_prev(b: &mut Bencher) {
-        b.iter(|| prev::run());
+        b.iter(|| prev::main());
     }
 }
