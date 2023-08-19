@@ -39,9 +39,10 @@ pub fn read_file(path: &str) -> Arc<Vec<u8>> {
     let (mut read, mut r) = (false, BufReader::new(File::open(path).unwrap()));
     let (mut buf, mut line) = (Vec::with_capacity(15000000), Vec::new());
     while r.read_until(b'\n', &mut line).unwrap_or(0) > 0 {
-        match read {
-            true => buf.extend_from_slice(&line[..line.len() - 1]),
-            false => read = line.starts_with(">TH".as_bytes()),
+        if read {
+            buf.extend_from_slice(&line[..line.len() - 1])
+        } else {
+            read = line.starts_with(">TH".as_bytes())
         }
         line.clear();
     }
